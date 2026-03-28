@@ -1361,13 +1361,14 @@ function renderDevices(){
             ` : `
               <div class="box wide"><div class="label">ملاحظة</div><div class="value multiline">يرجى إبراز هذا الوصل عند الاستلام.</div></div>
             `}
+            <div class="box wide note-box"><div class="label">ملاحظة مهمة</div><div class="value multiline important-note">${escapeHtml(RECEIPT_NOTE)}</div></div>
           </div>
           <div class="codes">
             <div class="code-box">
               <div class="code-title">باركود الوصل</div>
               <svg class="barcode-svg" data-code="${escapeHtml(barcodeValue)}"></svg>
             </div>
-            <div class="code-box">
+            <div class="code-box qr-code-box">
               <div class="code-title">QR رقم الوصل</div>
               <div class="qr-box" data-code="${escapeHtml(barcodeValue)}"></div>
             </div>
@@ -1392,7 +1393,7 @@ function renderDevices(){
   .sheet{height:calc(100vh - 52px);display:grid;grid-template-rows:1fr auto 1fr;gap:4px;padding:6px}
   .copy{border:2px solid #111827;border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;overflow:hidden}
   .copy-head{text-align:center;margin-bottom:6px}
-  .logo{width:260px;max-height:120px;object-fit:contain;display:block;margin:0 auto 8px auto}
+  .logo{width:520px;max-width:100%;max-height:240px;object-fit:contain;display:block;margin:0 auto 8px auto}
   .copy-title{font-size:18px;font-weight:800;letter-spacing:.3px}
   .status-pill{display:inline-block;align-self:center;border:1.5px solid #111827;border-radius:999px;padding:4px 14px;font-size:12px;font-weight:700;margin:2px 0 8px}
   .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
@@ -1402,12 +1403,15 @@ function renderDevices(){
   .value{font-size:13px;font-weight:700;line-height:1.35}
   .value.multiline{white-space:pre-wrap;word-break:break-word}
   .note-space{height:36px;border:1px dashed #94a3b8;border-radius:8px;background:#fff}
-  .codes{display:grid;grid-template-columns:1fr 150px;gap:12px;align-items:end;margin-top:10px}
-  .code-box{border:1px solid #cbd5e1;border-radius:12px;padding:6px;text-align:center}
+  .codes{display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:12px;align-items:end;margin-top:10px}
+  .code-box{border:1px solid #cbd5e1;border-radius:12px;padding:6px;text-align:center;background:#fff}
   .code-title{font-size:10px;font-weight:700;color:#475569;margin-bottom:4px}
   .barcode-svg{width:100%;height:62px}
-  .qr-box{width:120px;height:120px;margin:0 auto;display:flex;align-items:center;justify-content:center}
+  .qr-box{width:150px;height:150px;margin:0 auto;display:flex;align-items:center;justify-content:center}
   .repeat-note{border:1px solid #d97706;background:#fffbeb;color:#92400e;border-radius:10px;padding:6px 8px;font-size:11px;font-weight:700;margin-bottom:8px;text-align:center}
+  .note-box{background:#fff7ed;border-color:#ea580c}
+  .important-note{color:#c2410c !important;font-size:12px;line-height:1.7;font-weight:800;text-align:center}
+  .qr-code-box{padding:8px}
   .cut-line{border-top:2px dashed #111827;text-align:center;padding-top:4px;font-size:11px;font-weight:700;letter-spacing:.5px}
   @media print {
     html,body{height:100%;overflow:hidden}
@@ -1495,8 +1499,9 @@ function renderDevices(){
 
 @media print{
   .logo{
-    width:320px !important;
-    max-height:160px !important;
+    width:520px !important;
+    max-width:100% !important;
+    max-height:240px !important;
   }
 }
 
@@ -1518,7 +1523,7 @@ window.addEventListener('load', function(){
       JsBarcode(el, String(el.getAttribute('data-code') || ''), {format:'CODE128', width:2, height:58, displayValue:false, margin:0});
     });
     document.querySelectorAll('.qr-box').forEach(function(el){
-      new QRCode(el, { text: String(el.getAttribute('data-code') || ''), width: 120, height: 120 });
+      new QRCode(el, { text: String(el.getAttribute('data-code') || ''), width: 150, height: 150 });
     });
   }catch(e){}
   setTimeout(function(){ window.print(); }, 250);
