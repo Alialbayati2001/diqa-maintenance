@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>نظام استلام وصيانة وتجهيز الأجهزة - جاهز لـ GitHub Pages</title>
+  <title>نظام استلام وصيانة وتجهيز الأجهزة</title>
   <style>
     :root{
       --bg:#0f172a;
@@ -221,6 +221,7 @@
   </style>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
   <div class="app">
@@ -286,7 +287,7 @@
           <section id="returnsSection" class="card panel section-page hidden"></section>
         </main>
       </div>
-      <div class="footer-note">هذا الملف تجريبي Frontend فقط ويخزن البيانات داخل المتصفح عبر LocalStorage. لاحقًا يمكن ربطه مع Firebase أو قاعدة بيانات فعلية.</div>
+      <div class="footer-note">هذه النسخة مهيأة للعمل مع Supabase وحفظ نسخة محلية احتياطية داخل المتصفح عند الحاجة.</div>
     </section>
   </div>
     <div id="scannerModal" class="scanner-modal">
@@ -331,10 +332,19 @@
     let currentSection = 'dashboard';
 
     const APP_CONFIG = {
-      dataProvider: 'local', // local | supabase
-      supabaseUrl: '',
-      supabaseAnonKey: ''
+      dataProvider: 'supabase',
+      supabaseUrl: 'https://gxcnodxuvhaciyhkdelb.supabase.co',
+      supabaseAnonKey: 'sb_publishable_EPYqj7StUEynG7cCEfg5kA_L9SeU46s',
+      stateTable: 'app_state',
+      stateRowId: 'main'
     };
+
+    const supabaseClient = window.supabase.createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseAnonKey);
+    let isHydrated = false;
+    let hydrationPromise = null;
+    let saveTimer = null;
+    let savingPromise = null;
+    let pendingSave = false;
 
     const DataAPI = {
       getDeviceById(deviceId){
@@ -391,7 +401,77 @@
       }
     }
 
-    function saveDB(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
+    function saveDB(){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+      if(APP_CONFIG.dataProvider !== 'supabase' || !isHydrated) return;
+      pendingSave = true;
+      if(saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => { flushSaveDB(); }, 350);
+    }
+
+    async function flushSaveDB(){
+      if(APP_CONFIG.dataProvider !== 'supabase' || !isHydrated || !pendingSave) return;
+      if(savingPromise) return savingPromise;
+      pendingSave = false;
+      const payload = JSON.parse(JSON.stringify(db));
+      savingPromise = supabaseClient
+        .from(APP_CONFIG.stateTable)
+        .upsert({
+          id: APP_CONFIG.stateRowId,
+          payload,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+      const { error } = await savingPromise;
+      savingPromise = null;
+      if(error){
+        console.error('Supabase save failed:', error);
+        alert('تعذر حفظ البيانات في Supabase. تأكد من إنشاء جدول app_state وتشغيل SQL المرفق.');
+      }
+      if(pendingSave) return flushSaveDB();
+    }
+
+    async function hydrateFromSupabase(){
+      if(APP_CONFIG.dataProvider !== 'supabase'){
+        isHydrated = true;
+        return;
+      }
+      if(hydrationPromise) return hydrationPromise;
+      hydrationPromise = (async () => {
+        const { data, error } = await supabaseClient
+          .from(APP_CONFIG.stateTable)
+          .select('payload')
+          .eq('id', APP_CONFIG.stateRowId)
+          .maybeSingle();
+
+        if(error && !String(error.message || '').toLowerCase().includes('0 rows')){
+          console.error('Supabase load failed:', error);
+          alert('تعذر قراءة البيانات من Supabase. تأكد من إنشاء جدول app_state وتشغيل SQL المرفق.');
+          isHydrated = true;
+          return;
+        }
+
+        if(data && data.payload){
+          const remote = data.payload;
+          db = {
+            ...structuredClone(DEFAULT_DB),
+            ...remote,
+            users: Array.isArray(remote.users) ? remote.users : structuredClone(DEFAULT_DB.users),
+            devices: Array.isArray(remote.devices) ? remote.devices : [],
+            supplyRequests: Array.isArray(remote.supplyRequests) ? remote.supplyRequests : [],
+            partSlips: Array.isArray(remote.partSlips) ? remote.partSlips : [],
+            completions: Array.isArray(remote.completions) ? remote.completions : [],
+            counters: remote.counters || structuredClone(DEFAULT_DB.counters)
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+        } else {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+          pendingSave = true;
+          await flushSaveDB();
+        }
+        isHydrated = true;
+      })();
+      return hydrationPromise;
+    }
     function uid(prefix='id'){ return prefix + '_' + Math.random().toString(36).slice(2,10); }
     function nowISO(){ return new Date().toISOString(); }
     function formatDateTime(iso){ if(!iso) return '—'; return new Date(iso).toLocaleString('ar-IQ'); }
@@ -517,13 +597,13 @@
     }
 
 
-    function loadPreparedAlerts(){
-      try{ return JSON.parse(localStorage.getItem(PREPARED_ALERTS_KEY) || '[]'); }
+    function loadCompanyRequestAlerts(){
+      try{ return JSON.parse(localStorage.getItem(COMPANY_REQUEST_ALERTS_KEY) || '[]'); }
       catch{ return []; }
     }
 
-    function savePreparedAlerts(ids){
-      localStorage.setItem(PREPARED_ALERTS_KEY, JSON.stringify(ids));
+    function saveCompanyRequestAlerts(ids){
+      localStorage.setItem(COMPANY_REQUEST_ALERTS_KEY, JSON.stringify(ids));
     }
 
     function playNotificationSound(){
@@ -570,7 +650,8 @@
       }
     }
 
-    function login(){
+    async function login(){
+      if(!isHydrated) await hydrateFromSupabase();
       const username = document.getElementById('loginUsername').value.trim();
       const password = document.getElementById('loginPassword').value.trim();
       const user = db.users.find(u => u.username === username && u.password === password);
@@ -943,16 +1024,15 @@
 <title>طباعة وصل استلام</title>
 <style>
   @page { size:A4 portrait; margin:8mm; }
-  img{image-rendering:auto}
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;font-family:Tahoma,Arial,sans-serif;color:#111827;background:#fff}
   .printbar{padding:10px;text-align:center;border-bottom:1px solid #d1d5db;background:#f8fafc}
   .printbar button{padding:10px 18px;border:0;border-radius:10px;background:#111827;color:#fff;font-size:14px;cursor:pointer}
   .sheet{height:calc(100vh - 52px);display:grid;grid-template-rows:1fr auto 1fr;gap:4px;padding:6px}
   .copy{border:2px solid #111827;border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;overflow:hidden}
-  .copy-head{text-align:center;margin-bottom:10px}
-  .logo{width:240px;max-width:100%;max-height:120px;object-fit:contain;display:block;margin:0 auto 8px auto}
-  .copy-title{font-size:17px;font-weight:800;letter-spacing:.3px}
+  .copy-head{text-align:center;margin-bottom:6px}
+  .logo{width:150px;max-height:64px;object-fit:contain;display:block;margin:0 auto 4px auto}
+  .copy-title{font-size:15px;font-weight:800;letter-spacing:.3px}
   .status-pill{display:inline-block;align-self:center;border:1.5px solid #111827;border-radius:999px;padding:4px 14px;font-size:12px;font-weight:700;margin:2px 0 8px}
   .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
   .box{border:1.5px solid #111827;border-radius:12px;padding:8px 10px;min-height:54px}
@@ -1705,6 +1785,14 @@ window.addEventListener('load', function(){
       a.click();
       URL.revokeObjectURL(url);
     }
+    document.addEventListener('DOMContentLoaded', async () => {
+      try{
+        await hydrateFromSupabase();
+      }catch(err){
+        console.error(err);
+      }
+    });
+
   </script>
 </body>
 </html>
