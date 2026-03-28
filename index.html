@@ -285,7 +285,17 @@
       color:#ffffff !important;
     }
 
-  </style>
+  
+    @media print{
+      .receipt-extra{
+        display:block;
+        margin-top:10px;
+        font-weight:bold;
+        color:#ea353c !important;
+      }
+    }
+    
+</style>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -315,10 +325,10 @@
         </div>
         <div style="margin-top:16px" class="card panel">
           <div class="hint">حسابات تجريبية:</div>
-          <div class="hint" style="margin-top:8px">موظف المحل: employee / 1234</div>
-          <div class="hint">فني الصيانة: technician / 1234</div>
-          <div class="hint">موظف الشركة: company / 1234</div>
-          <div class="hint">المدير: manager / 1234</div>
+          <div class="hint" style="margin-top:8px">موظف المحل: employee / 1000</div>
+          <div class="hint">فني الصيانة: technician / 1999</div>
+          <div class="hint">موظف الشركة: company / 1001</div>
+          <div class="hint">المدير: manager / Adgj1357</div>
         </div>
       </div>
     </section>
@@ -382,10 +392,10 @@
     const COMPANY_REQUEST_ALERTS_KEY = 'repairSystemDemo_companyRequestAlerts_v1';
     const DEFAULT_DB = {
       users: [
-        {id:'u1', username:'employee', password:'1234', fullName:'موظف المحل', role:'employee'},
-        {id:'u2', username:'technician', password:'1234', fullName:'فني الصيانة', role:'technician'},
-        {id:'u3', username:'company', password:'1234', fullName:'موظف الشركة', role:'company'},
-        {id:'u4', username:'manager', password:'1234', fullName:'المدير', role:'manager'}
+        {id:'u1', username:'employee', password:'1000', fullName:'موظف المحل', role:'employee'},
+        {id:'u2', username:'technician', password:'1999', fullName:'فني الصيانة', role:'technician'},
+        {id:'u3', username:'company', password:'1001', fullName:'موظف الشركة', role:'company'},
+        {id:'u4', username:'manager', password:'Adgj1357', fullName:'المدير', role:'manager'}
       ],
       devices: [],
       supplyRequests: [],
@@ -398,7 +408,11 @@
     let currentUser = null;
     let currentSection = 'dashboard';
 
-    const APP_CONFIG = {
+    
+    const MAINTENANCE_PHONE = "07742228831";
+    const RECEIPT_NOTE = "يسقط حق المطالبة بالجهاز بعد شهر من اكمال تصليح الجهاز";
+
+const APP_CONFIG = {
       dataProvider: 'supabase',
       supabaseUrl: 'https://gxcnodxuvhaciyhkdelb.supabase.co',
       supabaseAnonKey: 'sb_publishable_EPYqj7StUEynG7cCEfg5kA_L9SeU46s',
@@ -1411,7 +1425,17 @@ function renderDevices(){
       color:#ffffff !important;
     }
 
-  </style>
+  
+    @media print{
+      .receipt-extra{
+        display:block;
+        margin-top:10px;
+        font-weight:bold;
+        color:#ea353c !important;
+      }
+    }
+    
+</style>
 </head>
 <body>
   <div class="printbar"><button onclick="window.print()">طباعة الآن</button></div>
