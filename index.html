@@ -6,25 +6,25 @@
   <title>نظام استلام وصيانة وتجهيز الأجهزة</title>
   <style>
     :root{
-      --bg:#0f172a;
-      --panel:#111827;
-      --panel-2:#1f2937;
-      --line:#334155;
-      --text:#e5e7eb;
-      --muted:#94a3b8;
-      --primary:#22c55e;
-      --primary-2:#16a34a;
-      --warning:#f59e0b;
-      --danger:#ef4444;
-      --info:#38bdf8;
-      --gray:#64748b;
-      --card:#0b1220;
+      --bg:#ffffff;
+      --panel:#ffffff;
+      --panel-2:#ffffff;
+      --line:#2cb9c2;
+      --text:#2cb9c2;
+      --muted:#2cb9c2;
+      --primary:#2cb9c2;
+      --primary-2:#2cb9c2;
+      --warning:#ea353c;
+      --danger:#ea353c;
+      --info:#2cb9c2;
+      --gray:#2cb9c2;
+      --card:#ffffff;
     }
     *{box-sizing:border-box}
     body{
       margin:0;
       font-family:Tahoma, Arial, sans-serif;
-      background:linear-gradient(180deg,#0b1120,#111827);
+      background:#ffffff;
       color:var(--text);
     }
     .app{min-height:100vh}
@@ -218,6 +218,73 @@
     .summary-card .v{font-size:15px;font-weight:700}
     .summary-card.full{grid-column:1/-1}
     .summary-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}
+  
+    body, h1, h2, h3, h4, h5, h6, p, label, span, td, th, div, a {
+      color:#2cb9c2 !important;
+    }
+    button{
+      background: linear-gradient(135deg, #2cb9c2, #2cb9c2);
+      color:#ffffff !important;
+      box-shadow: 0 6px 15px rgba(44,185,194,0.3);
+      border:none;
+      transition: all 0.2s ease;
+    }
+    button:hover{
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(44,185,194,0.4);
+      filter:none;
+    }
+    button.danger{
+      background: linear-gradient(135deg, #ea353c, #ea353c) !important;
+      color:#ffffff !important;
+      box-shadow: 0 6px 15px rgba(234,53,60,0.3);
+    }
+    .card{
+      background:#ffffff !important;
+      border:2px solid #2cb9c2 !important;
+      box-shadow: 0 10px 30px rgba(44,185,194,0.15);
+      border-radius:18px;
+    }
+    input, textarea, select{
+      border:2px solid #2cb9c2 !important;
+      background:#ffffff !important;
+      color:#2cb9c2 !important;
+      transition:0.2s;
+    }
+    input:focus, textarea:focus, select:focus{
+      box-shadow:0 0 0 3px rgba(44,185,194,0.2);
+      outline:none;
+    }
+    th{
+      background:#2cb9c2 !important;
+      color:#ffffff !important;
+    }
+    td{
+      border-bottom:1px solid #2cb9c2 !important;
+    }
+    .topbar{
+      background: linear-gradient(135deg, #2cb9c2, #2cb9c2) !important;
+      color:#ffffff !important;
+      border-bottom:2px solid #2cb9c2 !important;
+    }
+    .topbar *{
+      color:#ffffff !important;
+    }
+    .nav button,
+    .nav button.active,
+    button.secondary,
+    button.info,
+    button.warning,
+    button.gray{
+      background:#2cb9c2 !important;
+      color:#ffffff !important;
+      border:2px solid #2cb9c2 !important;
+    }
+    .badge{
+      background:#2cb9c2 !important;
+      color:#ffffff !important;
+    }
+
   </style>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
@@ -263,7 +330,7 @@
           <p id="whoami">—</p>
         </div>
         <div class="actions">
-          <button class="secondary small" onclick="seedDemoData()">تعبئة بيانات تجريبية</button>
+          
           <button class="gray small" onclick="exportData()">تصدير البيانات</button>
           <button class="danger small" onclick="logout()">تسجيل الخروج</button>
         </div>
@@ -557,7 +624,17 @@
         </div>`;
     }
 
-    const deviceStatusMap = {
+    
+    const legacyStatusOptions = [
+      {value:'received', label:'مستلم'},
+      {value:'await_approval', label:'انتظار موافقة الزبون'},
+      {value:'await_parts', label:'انتظار قطع غيار'},
+      {value:'complete', label:'مكتمل'},
+      {value:'delivered', label:'تم التسليم'},
+      {value:'not_repaired', label:'لم يتم التصليح'}
+    ];
+
+const deviceStatusMap = {
       received: {label:'مستلم', cls:'b-received'},
       await_approval: {label:'انتظار موافقة الزبون', cls:'b-await-approval'},
       await_parts: {label:'انتظار قطع غيار', cls:'b-await-parts'},
@@ -1011,7 +1088,73 @@
       openSection('devices');
     }
 
-    function renderDevices(){
+    
+    function addLegacyDevice(){
+      if(!currentUser || currentUser.role !== 'manager'){
+        alert('هذه العملية متاحة للمدير فقط');
+        return;
+      }
+
+      const receiptNumber = document.getElementById('legacyReceiptNumber')?.value.trim();
+      const customerName = document.getElementById('legacyCustomerName')?.value.trim();
+      const phone = document.getElementById('legacyPhone')?.value.trim();
+      const deviceType = document.getElementById('legacyDeviceType')?.value.trim();
+      const deviceColor = document.getElementById('legacyDeviceColor')?.value.trim();
+      const status = document.getElementById('legacyStatus')?.value || 'received';
+      const repairAmount = Number(document.getElementById('legacyRepairAmount')?.value || 0);
+      const createdAtInput = document.getElementById('legacyCreatedAt')?.value;
+      const faultDescription = document.getElementById('legacyFaultDescription')?.value.trim();
+
+      if(!receiptNumber || !customerName || !deviceType){
+        alert('يرجى إدخال رقم الوصل واسم الزبون ونوع الجهاز');
+        return;
+      }
+
+      const exists = db.devices.find(d => String(d.receiptNumber || '').trim() === receiptNumber);
+      if(exists){
+        alert('رقم الوصل موجود بالفعل');
+        return;
+      }
+
+      const createdAt = createdAtInput ? new Date(createdAtInput).toISOString() : nowISO();
+      const serialGuess = inferReceiptSerial(receiptNumber, db.devices.length + 1);
+
+      const device = {
+        id: uid('dev'),
+        receiptNumber,
+        receiptSerial: serialGuess,
+        customerName,
+        phone,
+        deviceType,
+        deviceColor,
+        faultDescription,
+        receiverName: currentUser.fullName,
+        status,
+        repairAmount,
+        createdAt,
+        completedAt: status === 'complete' || status === 'delivered' ? nowISO() : null,
+        deliveredAt: status === 'delivered' ? nowISO() : null,
+        notRepairedAt: status === 'not_repaired' ? nowISO() : null,
+        notRepairReason: status === 'not_repaired' ? (faultDescription || 'تمت إضافته كجهاز قديم غير مُصلح') : ''
+      };
+
+      db.devices.unshift(device);
+      db.counters = db.counters || {};
+      db.counters.receipt = Math.max(Number(db.counters.receipt) || 1, serialGuess + 1);
+      saveDB();
+      renderAll();
+      alert('تمت إضافة الجهاز القديم بنجاح');
+
+      ['legacyReceiptNumber','legacyCustomerName','legacyPhone','legacyDeviceType','legacyDeviceColor','legacyRepairAmount','legacyCreatedAt','legacyFaultDescription'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.value = '';
+      });
+      const statusEl = document.getElementById('legacyStatus');
+      if(statusEl) statusEl.value = 'received';
+    }
+
+
+function renderDevices(){
       const filteredDevices = getFilteredDevices();
       const overdueCount = db.devices.filter(d => {
         const ageDays = d.createdAt ? ((new Date() - new Date(d.createdAt)) / (1000 * 60 * 60 * 24)) : 0;
@@ -1201,7 +1344,74 @@
     .sheet{height:100%;padding:0;gap:4px}
     .copy,.cut-line{page-break-inside:avoid;break-inside:avoid}
   }
-</style>
+
+    body, h1, h2, h3, h4, h5, h6, p, label, span, td, th, div, a {
+      color:#2cb9c2 !important;
+    }
+    button{
+      background: linear-gradient(135deg, #2cb9c2, #2cb9c2);
+      color:#ffffff !important;
+      box-shadow: 0 6px 15px rgba(44,185,194,0.3);
+      border:none;
+      transition: all 0.2s ease;
+    }
+    button:hover{
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(44,185,194,0.4);
+      filter:none;
+    }
+    button.danger{
+      background: linear-gradient(135deg, #ea353c, #ea353c) !important;
+      color:#ffffff !important;
+      box-shadow: 0 6px 15px rgba(234,53,60,0.3);
+    }
+    .card{
+      background:#ffffff !important;
+      border:2px solid #2cb9c2 !important;
+      box-shadow: 0 10px 30px rgba(44,185,194,0.15);
+      border-radius:18px;
+    }
+    input, textarea, select{
+      border:2px solid #2cb9c2 !important;
+      background:#ffffff !important;
+      color:#2cb9c2 !important;
+      transition:0.2s;
+    }
+    input:focus, textarea:focus, select:focus{
+      box-shadow:0 0 0 3px rgba(44,185,194,0.2);
+      outline:none;
+    }
+    th{
+      background:#2cb9c2 !important;
+      color:#ffffff !important;
+    }
+    td{
+      border-bottom:1px solid #2cb9c2 !important;
+    }
+    .topbar{
+      background: linear-gradient(135deg, #2cb9c2, #2cb9c2) !important;
+      color:#ffffff !important;
+      border-bottom:2px solid #2cb9c2 !important;
+    }
+    .topbar *{
+      color:#ffffff !important;
+    }
+    .nav button,
+    .nav button.active,
+    button.secondary,
+    button.info,
+    button.warning,
+    button.gray{
+      background:#2cb9c2 !important;
+      color:#ffffff !important;
+      border:2px solid #2cb9c2 !important;
+    }
+    .badge{
+      background:#2cb9c2 !important;
+      color:#ffffff !important;
+    }
+
+  </style>
 </head>
 <body>
   <div class="printbar"><button onclick="window.print()">طباعة الآن</button></div>
@@ -1517,6 +1727,60 @@ window.addEventListener('load', function(){
             <tbody>${rows || `<tr><td colspan="8" class="muted">لا توجد طلبات تجهيز</td></tr>`}</tbody>
           </table>
         </div>
+        ${currentUser && currentUser.role === 'manager' ? `
+          <div class="card panel" style="margin-top:16px">
+            <div class="section-title">
+              <div>
+                <h2>إضافة جهاز مستلم سابقاً</h2>
+                <p>هذه الاستمارة خاصة بالمدير لإدخال الأجهزة القديمة التي تم استلامها قبل تشغيل النظام.</p>
+              </div>
+            </div>
+            <div class="grid grid-2">
+              <div>
+                <label>رقم الوصل القديم</label>
+                <input id="legacyReceiptNumber" placeholder="مثال: 2501" />
+              </div>
+              <div>
+                <label>اسم الزبون</label>
+                <input id="legacyCustomerName" placeholder="اسم الزبون" />
+              </div>
+              <div>
+                <label>رقم الهاتف</label>
+                <input id="legacyPhone" placeholder="07xxxxxxxxx" />
+              </div>
+              <div>
+                <label>نوع الجهاز</label>
+                <input id="legacyDeviceType" placeholder="موبايل / لابتوب / ..." />
+              </div>
+              <div>
+                <label>لون الجهاز</label>
+                <input id="legacyDeviceColor" placeholder="أبيض / أسود / ..." />
+              </div>
+              <div>
+                <label>الحالة الحالية</label>
+                <select id="legacyStatus">
+                  ${legacyStatusOptions.map(s => `<option value="${s.value}">${s.label}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label>مبلغ الصيانة</label>
+                <input id="legacyRepairAmount" type="number" min="0" step="0.01" placeholder="0" />
+              </div>
+              <div>
+                <label>تاريخ الاستلام السابق</label>
+                <input id="legacyCreatedAt" type="datetime-local" />
+              </div>
+              <div class="full-width" style="grid-column:1/-1">
+                <label>العطل / الملاحظات</label>
+                <textarea id="legacyFaultDescription" placeholder="اكتب العطل أو أي ملاحظة عن الجهاز"></textarea>
+              </div>
+            </div>
+            <div style="margin-top:14px">
+              <button type="button" onclick="addLegacyDevice()">إضافة الجهاز القديم</button>
+            </div>
+          </div>
+        ` : ''}
+
       `;
     }
 
