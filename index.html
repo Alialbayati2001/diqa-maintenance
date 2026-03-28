@@ -410,6 +410,24 @@
 
     
     const MAINTENANCE_PHONE = "07742228831";
+
+    const DEVICE_BRANDS = ['iphone','samsung','realme','redmi','poco','mi','vivo','infinix','tecno','oppo','allcall','alcaterl','tcl','honor','huawie','blackview','wiko','LG','redmagic'];
+
+    function normalizeBrandInput(value=''){
+      const raw = String(value || '').trim();
+      if(!raw) return '';
+      const lower = raw.toLowerCase();
+      for(const brand of DEVICE_BRANDS){
+        if(lower === brand.toLowerCase()) return brand;
+        if(lower.startsWith(brand.toLowerCase() + ' ')) return brand + raw.slice(brand.length);
+      }
+      return raw;
+    }
+
+    function deviceBrandSuggestions(){
+      return DEVICE_BRANDS.map(b => `<option value="${b} "></option>`).join('');
+    }
+
     const RECEIPT_NOTE = "يسقط حق المطالبة بالجهاز بعد شهر من اكمال تصليح الجهاز";
 
 const APP_CONFIG = {
@@ -937,7 +955,32 @@ const deviceStatusMap = {
       `;
     }
 
-    function renderShopReceive(){
+    
+    function handleDeviceTypeInput(input){
+      if(!input) return;
+      const val = String(input.value || '');
+      if(!val.trim()){
+        refreshDeviceBrandList();
+        return;
+      }
+      const parts = val.trimStart().split(/\s+/);
+      const first = parts[0] || '';
+      const matched = DEVICE_BRANDS.find(b => b.toLowerCase() === first.toLowerCase());
+      if(matched && first !== matched){
+        const rest = val.trimStart().slice(first.length);
+        input.value = matched + rest;
+      }
+    }
+
+    function refreshDeviceBrandList(){
+      document.querySelectorAll('#deviceBrandList').forEach(dl => {
+        dl.innerHTML = deviceBrandSuggestions();
+      });
+    }
+
+
+function renderShopReceive(){
+      refreshDeviceBrandList();
       const editableRows = getReceiptEditableDevices().map(d => `
         <tr>
           <td>${escapeHtml(d.receiptNumber)}</td>
@@ -1026,7 +1069,7 @@ const deviceStatusMap = {
       e.preventDefault();
       const customerName = document.getElementById('customerName').value.trim();
       const phone = document.getElementById('phone').value.trim();
-      const deviceType = document.getElementById('deviceType').value.trim();
+      const deviceType = normalizeBrandInput(document.getElementById('deviceType').value.trim());
       const deviceColor = document.getElementById('deviceColor').value.trim();
       const faultDescription = document.getElementById('faultDescription').value.trim();
       const repeated = findRecentRepeatedFault(customerName, phone, deviceType, faultDescription, editingReceiptId);
@@ -1112,7 +1155,7 @@ const deviceStatusMap = {
       const receiptNumber = document.getElementById('legacyReceiptNumber')?.value.trim();
       const customerName = document.getElementById('legacyCustomerName')?.value.trim();
       const phone = document.getElementById('legacyPhone')?.value.trim();
-      const deviceType = document.getElementById('legacyDeviceType')?.value.trim();
+      const deviceType = normalizeBrandInput(document.getElementById('legacyDeviceType')?.value.trim());
       const deviceColor = document.getElementById('legacyDeviceColor')?.value.trim();
       const status = document.getElementById('legacyStatus')?.value || 'received';
       const repairAmount = Number(document.getElementById('legacyRepairAmount')?.value || 0);
@@ -1774,7 +1817,7 @@ window.addEventListener('load', function(){
               </div>
               <div>
                 <label>نوع الجهاز</label>
-                <input id="legacyDeviceType" placeholder="موبايل / لابتوب / ..." />
+                <input id="legacyDeviceType" list="deviceBrandList" placeholder="مثال: tecno spark 20" oninput="handleDeviceTypeInput(this)" />
               </div>
               <div>
                 <label>لون الجهاز</label>
