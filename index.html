@@ -295,6 +295,17 @@
       }
     }
     
+
+@media print{
+  .logo{
+  width:300px;
+  max-height:150px;
+  object-fit:contain;
+  display:block;
+  margin:0 auto 10px auto;
+}
+}
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
@@ -1327,6 +1338,9 @@ function renderDevices(){
           <div class="copy-head">
             <img src="${logoSrc}" class="logo" alt="logo" />
             <div class="copy-title">${copyTitle}</div>
+      <div style="text-align:center;font-weight:bold;margin-top:6px;color:#2cb9c2">
+        رقم الصيانة: 07742228831
+      </div>
           </div>
           ${repeatedHtml}
           <div class="status-pill">${escapeHtml(statusLabel)}</div>
@@ -1478,6 +1492,14 @@ function renderDevices(){
       }
     }
     
+
+@media print{
+  .logo{
+    width:320px !important;
+    max-height:160px !important;
+  }
+}
+
 </style>
 </head>
 <body>
