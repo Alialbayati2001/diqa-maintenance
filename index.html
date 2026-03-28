@@ -374,6 +374,7 @@
     let scannerDetector = null;
     let lastScannedCode = '';
     let highlightedDeviceId = null;
+    let editingReceiptId = null;
 
     function loadDB(){
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -745,6 +746,67 @@
       renderReturns();
     }
 
+
+    function formatMoneyIQD(value){
+      return Number(value || 0).toLocaleString('ar-IQ');
+    }
+
+    function getReceivedMaintenanceTotal(){
+      return db.devices
+        .filter(d => d.status === 'delivered')
+        .reduce((sum, d) => sum + Number(d.repairAmount || 0), 0);
+    }
+
+    function getReceiptEditableDevices(){
+      return db.devices.slice().sort((a, b) => (Number(b.receiptSerial || 0) - Number(a.receiptSerial || 0)));
+    }
+
+    function startEditReceipt(deviceId){
+      const d = db.devices.find(x => x.id === deviceId);
+      if(!d) return;
+      editingReceiptId = deviceId;
+      renderShopReceive();
+      const map = {
+        customerName: d.customerName || '',
+        phone: d.phone || '',
+        deviceType: d.deviceType || '',
+        deviceColor: d.deviceColor || '',
+        receivedBy: d.receivedBy || '',
+        faultDescription: d.faultDescription || '',
+        accessories: d.accessories || '',
+        repairAmount: Number(d.repairAmount || 0),
+        receiveDate: d.receiveDate || '',
+        receiveTime: d.receiveTime || ''
+      };
+      Object.entries(map).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if(el) el.value = value;
+      });
+      renderRepeatedFaultNotice();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function cancelEditReceipt(){
+      editingReceiptId = null;
+      renderShopReceive();
+    }
+
+    function deleteReceipt(deviceId){
+      const d = db.devices.find(x => x.id === deviceId);
+      if(!d) return;
+      const ok = confirm(`هل تريد حذف وصل الاستلام رقم ${d.receiptNumber} نهائياً؟ سيتم حذف أي طلبات تجهيز أو وصولات أو عمليات إتمام مرتبطة به أيضاً.`);
+      if(!ok) return;
+      db.supplyRequests = db.supplyRequests.filter(x => x.deviceId !== deviceId);
+      db.partSlips = db.partSlips.filter(x => x.deviceId !== deviceId);
+      db.completions = db.completions.filter(x => x.deviceId !== deviceId);
+      db.devices = db.devices.filter(x => x.id !== deviceId);
+      if(editingReceiptId === deviceId) editingReceiptId = null;
+      saveDB();
+      buildNav();
+      renderAll();
+      alert('تم حذف وصل الاستلام بنجاح');
+    }
+
     function renderDashboard(){
       const today = new Date().toISOString().split('T')[0];
       const now = new Date();
@@ -759,6 +821,10 @@
         const ageDays = (now - new Date(d.createdAt)) / (1000 * 60 * 60 * 24);
         return ageDays >= 3 && !['complete', 'delivered', 'not_repaired'].includes(d.status);
       }).length;
+      const receivedMaintenanceTotal = getReceivedMaintenanceTotal();
+      const managerExtraStat = currentUser && currentUser.role === 'manager'
+        ? `<div class="stat"><div class="label">مجموع مبالغ الصيانة المستلمة</div><div class="value">${formatMoneyIQD(receivedMaintenanceTotal)}</div></div>`
+        : '';
 
       document.getElementById('dashboardSection').innerHTML = `
         <div class="section-title">
@@ -775,16 +841,36 @@
           <div class="stat"><div class="label">الأجهزة المتأخرة</div><div class="value">${overdueDevices}</div></div>
           <div class="stat"><div class="label">طلبات تجهيز بانتظار الشركة</div><div class="value">${pendingSupply}</div></div>
           <div class="stat"><div class="label">وصولات معلقة عند الفني</div><div class="value">${pendingParts}</div></div>
+          ${managerExtraStat}
         </div>
       `;
     }
 
     function renderShopReceive(){
+      const editableRows = getReceiptEditableDevices().map(d => `
+        <tr>
+          <td>${escapeHtml(d.receiptNumber)}</td>
+          <td>${escapeHtml(d.customerName)}</td>
+          <td>${escapeHtml(d.deviceType)}</td>
+          <td>${escapeHtml(d.phone)}</td>
+          <td>${formatMoneyIQD(d.repairAmount || 0)}</td>
+          <td>${badge(deviceStatusMap, d.status)}</td>
+          <td>${escapeHtml(d.receivedBy || '—')}</td>
+          <td>
+            <div class="actions">
+              <button type="button" class="small info" onclick="startEditReceipt('${d.id}')">تعديل</button>
+              <button type="button" class="small danger" onclick="deleteReceipt('${d.id}')">حذف</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+      const isEditing = !!editingReceiptId;
+      const editTarget = isEditing ? db.devices.find(x => x.id === editingReceiptId) : null;
       document.getElementById('shopReceiveSection').innerHTML = `
         <div class="section-title">
           <div>
-            <h2>استلام جهاز من الزبون</h2>
-            <p>هذه الصفحة لموظف المحل لاستلام الجهاز وإرساله إلى الصيانة، بدون كتابة رقم فاتورة في هذه المرحلة</p>
+            <h2>${isEditing ? 'تعديل وصل الاستلام' : 'استلام جهاز من الزبون'}</h2>
+            <p>${isEditing ? `أنت الآن تعدّل الوصل رقم ${escapeHtml(editTarget?.receiptNumber || '')}` : 'هذه الصفحة لموظف المحل والمدير لاستلام الجهاز وإرساله إلى الصيانة، بدون كتابة رقم فاتورة في هذه المرحلة'}</p>
           </div>
         </div>
         <form class="grid grid-2" onsubmit="createDevice(event)">
@@ -799,8 +885,35 @@
           <div><label>مبلغ الصيانة</label><input id="repairAmount" type="number" min="0" step="0.01" /></div>
           <div><label>تاريخ الاستلام</label><input id="receiveDate" type="date" required /></div>
           <div><label>الوقت</label><input id="receiveTime" type="time" required /></div>
-          <div style="grid-column:1/-1"><button type="submit">حفظ استلام الجهاز وإرساله للصيانة</button></div>
+          <div style="grid-column:1/-1" class="actions">
+            <button type="submit">${isEditing ? 'حفظ التعديلات' : 'حفظ استلام الجهاز وإرساله للصيانة'}</button>
+            ${isEditing ? '<button type="button" class="secondary" onclick="cancelEditReceipt()">إلغاء التعديل</button>' : ''}
+          </div>
         </form>
+        <div style="height:16px"></div>
+        <div class="section-title" style="margin-bottom:10px">
+          <div>
+            <h2 style="font-size:18px">الوصولات القابلة للتعديل والحذف</h2>
+            <p>يمكن لموظف الاستلام والمدير تعديل أو حذف أي وصل استلام من هنا</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>رقم الوصل</th>
+                <th>الزبون</th>
+                <th>الجهاز</th>
+                <th>الهاتف</th>
+                <th>مبلغ الصيانة</th>
+                <th>الحالة</th>
+                <th>المستلم</th>
+                <th>إجراء</th>
+              </tr>
+            </thead>
+            <tbody>${editableRows || '<tr><td colspan="8" class="muted">لا توجد وصولات استلام حالياً</td></tr>'}</tbody>
+          </table>
+        </div>
       `;
       const today = new Date();
       const y = today.getFullYear();
@@ -825,11 +938,45 @@
       const deviceType = document.getElementById('deviceType').value.trim();
       const deviceColor = document.getElementById('deviceColor').value.trim();
       const faultDescription = document.getElementById('faultDescription').value.trim();
-      const repeated = findRecentRepeatedFault(customerName, phone, deviceType, faultDescription);
+      const repeated = findRecentRepeatedFault(customerName, phone, deviceType, faultDescription, editingReceiptId);
       if(repeated){
-        const go = confirm(`⚠️ هذا الجهاز لديه عطل متكرر لنفس الزبون خلال آخر 20 يوم\n\nرقم الوصل السابق: ${repeated.receiptNumber || '—'}\nالعطل السابق: ${repeated.faultDescription || '—'}\n\nهل تريد الاستمرار؟`);
+        const go = confirm(`⚠️ هذا الجهاز لديه عطل متكرر لنفس الزبون خلال آخر 20 يوم
+
+رقم الوصل السابق: ${repeated.receiptNumber || '—'}
+العطل السابق: ${repeated.faultDescription || '—'}
+
+هل تريد الاستمرار؟`);
         if(!go) return;
       }
+
+      if(editingReceiptId){
+        const current = db.devices.find(x => x.id === editingReceiptId);
+        if(!current){
+          alert('تعذر العثور على الوصل المطلوب تعديله');
+          editingReceiptId = null;
+          renderShopReceive();
+          return;
+        }
+        current.customerName = customerName;
+        current.phone = phone;
+        current.deviceType = deviceType;
+        current.deviceColor = deviceColor;
+        current.faultDescription = faultDescription;
+        current.accessories = document.getElementById('accessories').value.trim();
+        current.repairAmount = Number(document.getElementById('repairAmount').value || 0);
+        current.receiveDate = document.getElementById('receiveDate').value;
+        current.receiveTime = document.getElementById('receiveTime').value;
+        current.receivedBy = document.getElementById('receivedBy').value.trim();
+        current.updatedAt = nowISO();
+        saveDB();
+        editingReceiptId = null;
+        alert('تم تحديث وصل الاستلام بنجاح');
+        e.target.reset();
+        renderAll();
+        openSection('shopReceive');
+        return;
+      }
+
       db.counters = db.counters || { receipt: 1 };
       const nextReceipt = Number(db.counters.receipt || 1);
       const autoNumber = String(nextReceipt);
@@ -883,7 +1030,7 @@
           <td>${escapeHtml(d.deviceColor || '—')}</td>
           <td>${escapeHtml(d.phone)}</td>
           <td>${badge(deviceStatusMap, d.status)}</td>
-          <td>${Number(d.repairAmount || 0).toLocaleString('ar-IQ')}</td>
+          <td>${formatMoneyIQD(d.repairAmount || 0)}</td>
           <td>${escapeHtml(d.receivedBy || '—')}</td>
           <td>${escapeHtml(d.receiveDate || '—')}<br><span class="muted">${escapeHtml(d.receiveTime || '')}</span></td>
           <td><svg id="barcode_${d.id}"></svg></td>
@@ -992,7 +1139,7 @@
             <div class="box"><div class="label">لون الجهاز</div><div class="value">${escapeHtml(d.deviceColor || '—')}</div></div>
             <div class="box wide"><div class="label">العطل</div><div class="value multiline">${escapeHtml(d.faultDescription || '—')}</div></div>
             <div class="box wide"><div class="label">الملحقات</div><div class="value multiline">${escapeHtml(d.accessories || '—')}</div></div>
-            <div class="box"><div class="label">مبلغ الصيانة</div><div class="value">${Number(d.repairAmount || 0).toLocaleString('ar-IQ')} د.ع</div></div>
+            <div class="box"><div class="label">مبلغ الصيانة</div><div class="value">${formatMoneyIQD(d.repairAmount || 0)} د.ع</div></div>
             <div class="box"><div class="label">الموظف المستلم</div><div class="value">${escapeHtml(d.receivedBy || '—')}</div></div>
             ${isTechnician ? `
               <div class="box wide"><div class="label">تشخيص الفني</div><div class="note-space"></div></div>
