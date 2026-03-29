@@ -424,6 +424,7 @@
     };
 
     let db = loadDB();
+    ensureBarcodeValues();
     let currentUser = null;
     let currentSection = 'dashboard';
 
@@ -453,8 +454,7 @@ const APP_CONFIG = {
       dataProvider: 'supabase',
       supabaseUrl: 'https://gxcnodxuvhaciyhkdelb.supabase.co',
       supabaseAnonKey: 'sb_publishable_EPYqj7StUEynG7cCEfg5kA_L9SeU46s',
-      stateTable: 'app_state',
-      stateRowId: 'main'
+      devicesTable: 'devices'
     };
 
     const supabaseClient = window.supabase.createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseAnonKey);
@@ -463,29 +463,6 @@ const APP_CONFIG = {
     let saveTimer = null;
     let savingPromise = null;
     let pendingSave = false;
-
-    const DataAPI = {
-      getDeviceById(deviceId){
-        return db.devices.find(d => d.id === deviceId) || null;
-      },
-      getDeviceByReceipt(receiptNumber){
-        return db.devices.find(d => String(d.receiptNumber || '').trim() === String(receiptNumber || '').trim()) || null;
-      },
-      getDeviceSummaryByReceipt(receiptNumber){
-        const d = this.getDeviceByReceipt(receiptNumber);
-        if(!d) return null;
-        return {
-          receiptNumber: d.receiptNumber,
-          customerName: d.customerName,
-          status: d.status,
-          statusLabel: getPublicStatusLabel(d.status),
-          amount: Number(d.repairAmount || 0),
-          phone: d.phone || '',
-          deviceType: d.deviceType || '',
-          deviceColor: d.deviceColor || ''
-        };
-      }
-    };
     let deviceFilters = { search:'', type:'all' };
     let scannerStream = null;
     let scannerInterval = null;
@@ -520,33 +497,185 @@ const APP_CONFIG = {
       }
     }
 
+
+    const DevicesAPI = {
+      mapRow(row){
+        if(!row) return null;
+        return {
+          id: row.id,
+          receiptNumber: row.receipt_number,
+          barcodeValue: row.barcode_value || buildBarcodeValue(row.receipt_number),
+          customerName: row.customer_name || '',
+          phone: row.phone || '',
+          deviceType: row.device_type || '',
+          deviceColor: row.device_color || '',
+          faultDescription: row.fault_description || '',
+          accessories: row.accessories || '',
+          repairAmount: Number(row.repair_amount || 0),
+          receiveDate: row.receive_date || '',
+          receiveTime: row.receive_time || '',
+          receivedBy: row.received_by || '',
+          receiverName: row.receiver_name || '',
+          status: row.status || 'received',
+          createdAt: row.created_at || null,
+          updatedAt: row.updated_at || null,
+          completedAt: row.completed_at || null,
+          deliveredAt: row.delivered_at || null,
+          deliveredBy: row.delivered_by || null,
+          notRepairedAt: row.not_repaired_at || null,
+          notRepairReason: row.not_repair_reason || '',
+          receiptSerial: inferReceiptSerial(row.receipt_number)
+        };
+      },
+      serialize(device){
+        return {
+          id: device.id,
+          receipt_number: String(device.receiptNumber || '').trim(),
+          barcode_value: String(device.barcodeValue || buildBarcodeValue(device.receiptNumber) || '').trim(),
+          customer_name: device.customerName || '',
+          phone: device.phone || '',
+          device_type: device.deviceType || '',
+          device_color: device.deviceColor || '',
+          fault_description: device.faultDescription || '',
+          accessories: device.accessories || '',
+          repair_amount: Number(device.repairAmount || 0),
+          receive_date: device.receiveDate || null,
+          receive_time: device.receiveTime || null,
+          received_by: device.receivedBy || '',
+          receiver_name: device.receiverName || '',
+          status: device.status || 'received',
+          created_at: device.createdAt || new Date().toISOString(),
+          updated_at: device.updatedAt || new Date().toISOString(),
+          completed_at: device.completedAt || null,
+          delivered_at: device.deliveredAt || null,
+          delivered_by: device.deliveredBy || null,
+          not_repaired_at: device.notRepairedAt || null,
+          not_repair_reason: device.notRepairReason || ''
+        };
+      },
+      async getAll(){
+        const { data, error } = await supabaseClient
+          .from(APP_CONFIG.devicesTable)
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if(error){
+          console.error('Devices load failed:', error);
+          return [];
+        }
+        return (data || []).map(row => this.mapRow(row));
+      },
+      async getByBarcode(barcodeValue){
+        const { data, error } = await supabaseClient
+          .from(APP_CONFIG.devicesTable)
+          .select('*')
+          .eq('barcode_value', String(barcodeValue || '').trim())
+          .maybeSingle();
+        if(error){
+          console.error('Device by barcode failed:', error);
+          return null;
+        }
+        return this.mapRow(data);
+      },
+      async upsert(device){
+        const { error } = await supabaseClient
+          .from(APP_CONFIG.devicesTable)
+          .upsert(this.serialize(device), { onConflict: 'id' });
+        if(error){
+          console.error('Device upsert failed:', error);
+          throw error;
+        }
+      },
+      async update(deviceId, patch){
+        const row = { updated_at: new Date().toISOString() };
+        if('receiptNumber' in patch) row.receipt_number = patch.receiptNumber;
+        if('barcodeValue' in patch) row.barcode_value = patch.barcodeValue;
+        if('customerName' in patch) row.customer_name = patch.customerName || '';
+        if('phone' in patch) row.phone = patch.phone || '';
+        if('deviceType' in patch) row.device_type = patch.deviceType || '';
+        if('deviceColor' in patch) row.device_color = patch.deviceColor || '';
+        if('faultDescription' in patch) row.fault_description = patch.faultDescription || '';
+        if('accessories' in patch) row.accessories = patch.accessories || '';
+        if('repairAmount' in patch) row.repair_amount = Number(patch.repairAmount || 0);
+        if('receiveDate' in patch) row.receive_date = patch.receiveDate || null;
+        if('receiveTime' in patch) row.receive_time = patch.receiveTime || null;
+        if('receivedBy' in patch) row.received_by = patch.receivedBy || '';
+        if('receiverName' in patch) row.receiver_name = patch.receiverName || '';
+        if('status' in patch) row.status = patch.status;
+        if('completedAt' in patch) row.completed_at = patch.completedAt || null;
+        if('deliveredAt' in patch) row.delivered_at = patch.deliveredAt || null;
+        if('deliveredBy' in patch) row.delivered_by = patch.deliveredBy || null;
+        if('notRepairedAt' in patch) row.not_repaired_at = patch.notRepairedAt || null;
+        if('notRepairReason' in patch) row.not_repair_reason = patch.notRepairReason || '';
+        const { error } = await supabaseClient
+          .from(APP_CONFIG.devicesTable)
+          .update(row)
+          .eq('id', deviceId);
+        if(error){
+          console.error('Device update failed:', error);
+          throw error;
+        }
+      }
+    };
+
+    let adminDevicesChannel = null;
+    let publicRealtimeChannel = null;
+
+    function subscribeAdminDevicesRealtime(){
+      if(adminDevicesChannel || APP_CONFIG.dataProvider !== 'supabase') return adminDevicesChannel;
+      adminDevicesChannel = supabaseClient
+        .channel('admin-devices-live')
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: APP_CONFIG.devicesTable
+        }, async () => {
+          db.devices = await DevicesAPI.getAll();
+          ensureBarcodeValues();
+          saveDB();
+          if(currentUser) renderAll();
+        })
+        .subscribe();
+      return adminDevicesChannel;
+    }
+
+    function unsubscribeAdminDevicesRealtime(){
+      if(adminDevicesChannel){
+        supabaseClient.removeChannel(adminDevicesChannel);
+        adminDevicesChannel = null;
+      }
+    }
+
+    function subscribeToDeviceRealtime(barcodeValue, onChange){
+      if(publicRealtimeChannel || !barcodeValue || APP_CONFIG.dataProvider !== 'supabase') return publicRealtimeChannel;
+      publicRealtimeChannel = supabaseClient
+        .channel('public-device-' + barcodeValue)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: APP_CONFIG.devicesTable,
+          filter: `barcode_value=eq.${barcodeValue}`
+        }, async () => {
+          const fresh = await DevicesAPI.getByBarcode(barcodeValue);
+          if(fresh) onChange(fresh);
+        })
+        .subscribe();
+      return publicRealtimeChannel;
+    }
+
+    function unsubscribeDeviceRealtime(){
+      if(publicRealtimeChannel){
+        supabaseClient.removeChannel(publicRealtimeChannel);
+        publicRealtimeChannel = null;
+      }
+    }
+
     function saveDB(){
       localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-      if(APP_CONFIG.dataProvider !== 'supabase' || !isHydrated) return;
-      pendingSave = true;
-      if(saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => { flushSaveDB(); }, 350);
     }
 
     async function flushSaveDB(){
-      if(APP_CONFIG.dataProvider !== 'supabase' || !isHydrated || !pendingSave) return;
-      if(savingPromise) return savingPromise;
-      pendingSave = false;
-      const payload = JSON.parse(JSON.stringify(db));
-      savingPromise = supabaseClient
-        .from(APP_CONFIG.stateTable)
-        .upsert({
-          id: APP_CONFIG.stateRowId,
-          payload,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
-      const { error } = await savingPromise;
-      savingPromise = null;
-      if(error){
-        console.error('Supabase save failed:', error);
-        alert('تعذر حفظ البيانات في Supabase. تأكد من إنشاء جدول app_state وتشغيل SQL المرفق.');
-      }
-      if(pendingSave) return flushSaveDB();
+      return;
     }
 
     async function hydrateFromSupabase(){
@@ -556,48 +685,184 @@ const APP_CONFIG = {
       }
       if(hydrationPromise) return hydrationPromise;
       hydrationPromise = (async () => {
-        const { data, error } = await supabaseClient
-          .from(APP_CONFIG.stateTable)
-          .select('payload')
-          .eq('id', APP_CONFIG.stateRowId)
-          .maybeSingle();
-
-        if(error && !String(error.message || '').toLowerCase().includes('0 rows')){
-          console.error('Supabase load failed:', error);
-          alert('تعذر قراءة البيانات من Supabase. تأكد من إنشاء جدول app_state وتشغيل SQL المرفق.');
-          isHydrated = true;
-          return;
-        }
-
-        if(data && data.payload){
-          const remote = data.payload;
-          db = {
-            ...structuredClone(DEFAULT_DB),
-            ...remote,
-            users: Array.isArray(remote.users) ? remote.users : structuredClone(DEFAULT_DB.users),
-            devices: Array.isArray(remote.devices) ? remote.devices : [],
-            supplyRequests: Array.isArray(remote.supplyRequests) ? remote.supplyRequests : [],
-            partSlips: Array.isArray(remote.partSlips) ? remote.partSlips : [],
-            completions: Array.isArray(remote.completions) ? remote.completions : [],
-            counters: remote.counters || structuredClone(DEFAULT_DB.counters)
-          };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-        } else {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-          pendingSave = true;
-          await flushSaveDB();
-        }
+        const devices = await DevicesAPI.getAll();
+        db = {
+          ...structuredClone(DEFAULT_DB),
+          ...db,
+          devices
+        };
+        ensureBarcodeValues();
+        saveDB();
         isHydrated = true;
       })();
       return hydrationPromise;
     }
+
+    async function updateDeviceStatus(deviceId, newStatus, extraUpdates = {}){
+      const device = db.devices.find(d => d.id === deviceId);
+      if(!device) return false;
+
+      const nextStatus = String(newStatus || '').trim();
+      let changed = String(device.status || '') !== nextStatus;
+
+      for(const key in extraUpdates){
+        if(device[key] !== extraUpdates[key]){
+          changed = true;
+          break;
+        }
+      }
+      if(!changed) return false;
+
+      const patch = {
+        status: nextStatus,
+        ...extraUpdates,
+        updatedAt: nowISO()
+      };
+
+      if(nextStatus === 'complete' && !device.completedAt && !patch.completedAt){
+        patch.completedAt = nowISO();
+      }
+      if(nextStatus === 'delivered' && !device.deliveredAt && !patch.deliveredAt){
+        patch.deliveredAt = nowISO();
+      }
+      if(nextStatus === 'not_repaired' && !device.notRepairedAt && !patch.notRepairedAt){
+        patch.notRepairedAt = nowISO();
+      }
+
+      Object.assign(device, patch);
+      await DevicesAPI.update(deviceId, patch);
+      saveDB();
+      return true;
+    }
+
+    async function setDeviceStatus(deviceId, status){
+      await updateDeviceStatus(deviceId, status);
+      renderAll();
+    }
+
+    async function setDeviceDelivered(deviceId){
+      await updateDeviceStatus(deviceId, 'delivered', {
+        deliveredBy: currentUser ? currentUser.fullName : '—'
+      });
+      renderAll();
+    }
+
+    async function markDeviceNotRepaired(deviceId){
+      const reason = prompt('سبب عدم التصليح:');
+      if(reason === null) return;
+      await updateDeviceStatus(deviceId, 'not_repaired', {
+        notRepairReason: String(reason || '').trim()
+      });
+      renderAll();
+    }
+
+    function renderPublicDevice(device){
+      document.body.innerHTML = `
+        <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#f7ffff;font-family:Tahoma,Arial,sans-serif">
+          <div style="width:min(520px,100%);background:#fff;border:2px solid #2cb9c2;border-radius:22px;box-shadow:0 12px 35px rgba(44,185,194,.16);overflow:hidden">
+            <div style="padding:20px;background:#2cb9c2;color:#fff;text-align:center">
+              <h2 style="margin:0;color:#fff !important">حالة الجهاز</h2>
+              <div style="margin-top:6px;color:#fff !important">شركة الدقة للصيانة</div>
+            </div>
+            <div style="padding:22px;text-align:center">
+              <div style="font-size:25px;font-weight:700;color:#2cb9c2;margin-bottom:16px">${escapeHtml(getPublicStatusLabel(device.status))}</div>
+              <div style="margin-bottom:10px"><strong>الزبون:</strong> ${escapeHtml(device.customerName || '—')}</div>
+              <div style="margin-bottom:10px"><strong>الجهاز:</strong> ${escapeHtml(device.deviceType || '—')}</div>
+              <div style="margin-bottom:10px"><strong>اللون:</strong> ${escapeHtml(device.deviceColor || '—')}</div>
+              <div style="margin-bottom:10px"><strong>المبلغ:</strong> ${formatMoneyIQD(device.repairAmount || 0)} د.ع</div>
+              <div style="margin-top:14px;color:#0f766e"><strong>رقم الصيانة:</strong> ${escapeHtml(MAINTENANCE_PHONE || '—')}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function bootPublic(){
+      const params = new URLSearchParams(location.search);
+      const barcodeValue = String(params.get('b') || '').trim();
+      if(!barcodeValue) return false;
+
+      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:Tahoma">جاري تحميل حالة الجهاز...</div>';
+      const device = await DevicesAPI.getByBarcode(barcodeValue);
+      if(!device){
+        document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:Tahoma">❌ لم يتم العثور على الجهاز</div>';
+        return true;
+      }
+
+      renderPublicDevice(device);
+      subscribeToDeviceRealtime(barcodeValue, renderPublicDevice);
+      window.addEventListener('beforeunload', () => {
+        unsubscribeDeviceRealtime();
+      });
+      return true;
+    }
+
     function uid(prefix='id'){ return prefix + '_' + Math.random().toString(36).slice(2,10); }
+    const DataAPI = {
+      getDeviceById(deviceId){
+        return db.devices.find(d => d.id === deviceId) || null;
+      },
+      getDeviceByBarcode(barcodeValue){
+        return db.devices.find(d => String(d.barcodeValue || '').trim() === String(barcodeValue || '').trim()) || null;
+      },
+      getDeviceByReceipt(receiptNumber){
+        return db.devices.find(d => String(d.receiptNumber || '').trim() === String(receiptNumber || '').trim()) || null;
+      },
+      getDeviceSummaryByBarcode(barcodeValue){
+        const d = this.getDeviceByBarcode(barcodeValue);
+        if(!d) return null;
+        return {
+          receiptNumber: d.receiptNumber,
+          barcodeValue: d.barcodeValue,
+          customerName: d.customerName,
+          status: d.status,
+          statusLabel: getPublicStatusLabel(d.status),
+          amount: Number(d.repairAmount || 0),
+          phone: d.phone || '',
+          deviceType: d.deviceType || '',
+          deviceColor: d.deviceColor || ''
+        };
+      },
+      getDeviceSummaryByReceipt(receiptNumber){
+        const d = this.getDeviceByReceipt(receiptNumber);
+        if(!d) return null;
+        return {
+          receiptNumber: d.receiptNumber,
+          barcodeValue: d.barcodeValue,
+          customerName: d.customerName,
+          status: d.status,
+          statusLabel: getPublicStatusLabel(d.status),
+          amount: Number(d.repairAmount || 0),
+          phone: d.phone || '',
+          deviceType: d.deviceType || '',
+          deviceColor: d.deviceColor || ''
+        };
+      }
+    };
+
     function nowISO(){ return new Date().toISOString(); }
     function formatDateTime(iso){ if(!iso) return '—'; return new Date(iso).toLocaleString('ar-IQ'); }
     function escapeHtml(str=''){ return String(str).replace(/[&<>"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s])); }
     function inferReceiptSerial(receiptNumber, fallbackIndex=0){
       const n = parseInt(String(receiptNumber || '').replace(/\D+/g, ''), 10);
       return Number.isFinite(n) && n > 0 ? n : fallbackIndex + 1;
+    }
+
+    function buildBarcodeValue(receiptNumber){
+      const clean = String(receiptNumber || '').trim();
+      return clean ? `DIQA-${clean}` : '';
+    }
+
+    function ensureBarcodeValues(){
+      db.devices = (db.devices || []).map((d, index) => ({
+        barcodeValue: d.barcodeValue || buildBarcodeValue(d.receiptNumber || inferReceiptSerial(d.receiptNumber, index + 1)),
+        ...d
+      }));
+    }
+
+    function buildPublicTrackUrl(device){
+      const code = String(device?.barcodeValue || buildBarcodeValue(device?.receiptNumber) || '').trim();
+      return `${location.origin}${location.pathname}?b=${encodeURIComponent(code)}`;
     }
 
     function normalizeArabicText(str=''){
@@ -791,12 +1056,15 @@ const deviceStatusMap = {
       document.getElementById('whoami').textContent = `${user.fullName} — ${roleLabel(user.role)}`;
       buildNav();
       renderAll();
+      subscribeAdminDevicesRealtime();
       notifyCompanyRequestsIfNeeded();
       buildNav();
       openSection('dashboard');
     }
 
     function logout(){
+      unsubscribeAdminDevicesRealtime();
+      unsubscribeDeviceRealtime();
       currentUser = null;
       document.getElementById('appView').classList.add('hidden');
       document.getElementById('loginView').classList.remove('hidden');
@@ -1084,7 +1352,7 @@ function renderShopReceive(){
       });
     }
 
-    function createDevice(e){
+    async function createDevice(e){
       e.preventDefault();
       const customerName = document.getElementById('customerName').value.trim();
       const phone = document.getElementById('phone').value.trim();
@@ -1121,6 +1389,8 @@ function renderShopReceive(){
         current.receiveTime = document.getElementById('receiveTime').value;
         current.receivedBy = document.getElementById('receivedBy').value.trim();
         current.updatedAt = nowISO();
+        current.barcodeValue = current.barcodeValue || buildBarcodeValue(current.receiptNumber);
+        await DevicesAPI.upsert(current);
         saveDB();
         editingReceiptId = null;
         alert('تم تحديث وصل الاستلام بنجاح');
@@ -1133,10 +1403,12 @@ function renderShopReceive(){
       db.counters = db.counters || { receipt: 1 };
       const nextReceipt = Number(db.counters.receipt || 1);
       const autoNumber = String(nextReceipt);
+      const barcodeValue = buildBarcodeValue(autoNumber);
       db.counters.receipt = nextReceipt + 1;
       db.devices.unshift({
         id: uid('dev'),
         receiptNumber: autoNumber,
+        barcodeValue,
         receiptSerial: nextReceipt,
         customerName,
         phone,
@@ -1157,6 +1429,7 @@ function renderShopReceive(){
         notRepairedAt: null,
         notRepairReason: ''
       });
+      await DevicesAPI.upsert(db.devices[0]);
       saveDB();
       alert('تم حفظ استلام الجهاز وإرساله للصيانة');
       e.target.reset();
@@ -1165,7 +1438,7 @@ function renderShopReceive(){
     }
 
     
-    function addLegacyDevice(){
+    async function addLegacyDevice(){
       if(!currentUser || currentUser.role !== 'manager'){
         alert('هذه العملية متاحة للمدير فقط');
         return;
@@ -1198,6 +1471,7 @@ function renderShopReceive(){
       const device = {
         id: uid('dev'),
         receiptNumber,
+        barcodeValue: buildBarcodeValue(receiptNumber),
         receiptSerial: serialGuess,
         customerName,
         phone,
@@ -1217,6 +1491,7 @@ function renderShopReceive(){
       db.devices.unshift(device);
       db.counters = db.counters || {};
       db.counters.receipt = Math.max(Number(db.counters.receipt) || 1, serialGuess + 1);
+      await DevicesAPI.upsert(device);
       saveDB();
       renderAll();
       alert('تمت إضافة الجهاز القديم بنجاح');
@@ -1338,7 +1613,7 @@ function renderDevices(){
         return;
       }
 
-      const qrValue = String(d.receiptNumber || '');
+      const qrValue = buildPublicTrackUrl(d);
       const now = new Date(d.createdAt || Date.now());
       const receiptDate = now.toLocaleDateString('en-CA');
       const receiptTime = now.toLocaleTimeString('ar-IQ', {hour:'2-digit', minute:'2-digit', hour12:false});
@@ -1550,7 +1825,7 @@ window.addEventListener('load', function(){
       const normalized = String(code || '').trim();
       deviceFilters.search = normalized;
       deviceFilters.type = 'all';
-      const found = db.devices.find(d => String(d.receiptNumber || '').trim() === normalized);
+      const found = db.devices.find(d => String(d.receiptNumber || '').trim() === normalized || String(d.barcodeValue || '').trim() === normalized);
       highlightedDeviceId = found ? found.id : null;
       renderDevices();
       stopBarcodeSearch();
@@ -1562,10 +1837,34 @@ window.addEventListener('load', function(){
           const row = document.getElementById(`device_row_${found.id}`);
           if(row) row.scrollIntoView({ behavior:'smooth', block:'center' });
         }, 80);
-        setTimeout(() => showDeviceSummaryByReceipt(normalized), 120);
+        setTimeout(() => showDeviceSummaryByReceipt(found ? found.receiptNumber : normalized), 120);
       }else{
-        showDeviceSummaryByReceipt(normalized);
+        showDeviceSummaryByReceipt(found ? found.receiptNumber : normalized);
       }
+    }
+
+
+    function showDeviceSummaryByReceipt(receiptNumber){
+      const summary = DataAPI.getDeviceSummaryByReceipt(receiptNumber);
+      if(!summary){
+        alert('لم يتم العثور على الوصل');
+        return;
+      }
+      alert(`رقم الوصل: ${summary.receiptNumber}\nالزبون: ${summary.customerName}\nالحالة: ${summary.statusLabel}\nنوع الجهاز: ${summary.deviceType}\nالمبلغ: ${formatMoneyIQD(summary.amount)} د.ع`);
+    }
+
+    function openSummaryFromSearch(){
+      const q = String(deviceFilters.search || '').trim();
+      if(!q){
+        alert('اكتب رقم الوصل أو الباركود أولاً');
+        return;
+      }
+      const found = DataAPI.getDeviceByBarcode(q) || DataAPI.getDeviceByReceipt(q);
+      if(!found){
+        alert('لم يتم العثور على الوصل');
+        return;
+      }
+      showDeviceSummaryByReceipt(found.receiptNumber);
     }
 
     function getFilteredDevices(){
@@ -1592,7 +1891,7 @@ window.addEventListener('load', function(){
         if(!q) return true;
         const hay = [
           d.receiptNumber,
-          `barcode ${d.receiptNumber || ''}`,
+          `barcode ${d.barcodeValue || d.receiptNumber || ''}`,
           d.customerName,
           d.deviceType,
           d.deviceColor,
@@ -1725,7 +2024,7 @@ window.addEventListener('load', function(){
       `;
     }
 
-    function createSupplyRequest(e){
+    async function createSupplyRequest(e){
       e.preventDefault();
       const deviceId = document.getElementById('supplyDeviceId').value;
       const device = db.devices.find(d => d.id === deviceId);
@@ -1751,8 +2050,7 @@ window.addEventListener('load', function(){
         createdAt: nowISO(),
         updatedAt: nowISO()
       });
-      device.status = 'await_parts';
-      device.updatedAt = nowISO();
+      await updateDeviceStatus(device.id, 'await_parts');
       saveDB();
       buildNav();
       notifyCompanyRequestsIfNeeded();
@@ -1811,7 +2109,7 @@ window.addEventListener('load', function(){
       `;
     }
 
-    function handleCompanyRequest(requestId, status){
+    async function handleCompanyRequest(requestId, status){
       const r = db.supplyRequests.find(x => x.id === requestId);
       if(!r) return;
       r.status = status;
@@ -1840,8 +2138,7 @@ window.addEventListener('load', function(){
         });
       }
       if(device && status === 'not_prepared'){
-        device.status = 'await_approval';
-        device.updatedAt = nowISO();
+        await updateDeviceStatus(device.id, 'await_approval');
       }
       saveDB();
       renderAll();
@@ -1964,7 +2261,7 @@ window.addEventListener('load', function(){
       `;
     }
 
-    function createCompletion(e){
+    async function createCompletion(e){
       e.preventDefault();
       const partSlipId = document.getElementById('completionPartSlipId').value;
       const part = db.partSlips.find(p => p.id === partSlipId);
@@ -1987,9 +2284,9 @@ window.addEventListener('load', function(){
       part.status = 'used';
       part.updatedAt = nowISO();
       if(device){
-        device.status = 'complete';
-        device.repairAmount = Number(document.getElementById('completionFinalAmount').value || 0);
-        device.updatedAt = nowISO();
+        await updateDeviceStatus(device.id, 'complete', {
+          repairAmount: Number(document.getElementById('completionFinalAmount').value || 0)
+        });
       }
       saveDB();
       buildNav();
@@ -2116,8 +2413,8 @@ window.addEventListener('load', function(){
     function seedDemoData(){
       if(!confirm('سيتم إضافة بيانات تجريبية فوق البيانات الحالية. متابعة؟')) return;
       if(db.devices.length === 0){
-        const d1 = {id:uid('dev'),receiptNumber:'1001',customerName:'علي فاضل',phone:'07700000001',deviceType:'موبايل سامسونج',faultDescription:'لا يشحن',accessories:'شاحن',repairAmount:15000,receiveDate:'2026-03-27',receiveTime:'10:30',receivedBy:'موظف المحل',status:'await_parts',createdAt:nowISO(),updatedAt:nowISO(),deliveredAt:null,deliveredBy:null};
-        const d2 = {id:uid('dev'),receiptNumber:'1002',customerName:'محمد كريم',phone:'07700000002',deviceType:'لابتوب',faultDescription:'كسر شاشة',accessories:'شنطة',repairAmount:35000,receiveDate:'2026-03-27',receiveTime:'11:00',receivedBy:'موظف المحل',status:'complete',createdAt:nowISO(),updatedAt:nowISO(),deliveredAt:null,deliveredBy:null};
+        const d1 = {id:uid('dev'),receiptNumber:'1001',barcodeValue:buildBarcodeValue('1001'),customerName:'علي فاضل',phone:'07700000001',deviceType:'موبايل سامسونج',faultDescription:'لا يشحن',accessories:'شاحن',repairAmount:15000,receiveDate:'2026-03-27',receiveTime:'10:30',receivedBy:'موظف المحل',status:'await_parts',createdAt:nowISO(),updatedAt:nowISO(),deliveredAt:null,deliveredBy:null};
+        const d2 = {id:uid('dev'),receiptNumber:'1002',barcodeValue:buildBarcodeValue('1002'),customerName:'محمد كريم',phone:'07700000002',deviceType:'لابتوب',faultDescription:'كسر شاشة',accessories:'شنطة',repairAmount:35000,receiveDate:'2026-03-27',receiveTime:'11:00',receivedBy:'موظف المحل',status:'complete',createdAt:nowISO(),updatedAt:nowISO(),deliveredAt:null,deliveredBy:null};
         db.devices.push(d1,d2);
         const r1 = {id:uid('req'),deviceId:d1.id,receiptNumber:'1001',customerName:'علي فاضل',partDescription:'منفذ شحن',notes:'مطلوب سريع',status:'prepared',sentBy:'موظف المحل',companyHandledBy:'موظف الشركة',createdAt:nowISO(),updatedAt:nowISO()};
         db.supplyRequests.push(r1);
@@ -2140,6 +2437,9 @@ window.addEventListener('load', function(){
     document.addEventListener('DOMContentLoaded', async () => {
       try{
         await hydrateFromSupabase();
+        const isPublic = await bootPublic();
+        if(isPublic) return;
+        renderAll();
       }catch(err){
         console.error(err);
       }
