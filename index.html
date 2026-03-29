@@ -426,7 +426,6 @@
       </div>
     </div>
 
-
   <script>
     const STORAGE_KEY = 'repairSystemDemo_v1';
     const COMPANY_REQUEST_ALERTS_KEY = 'repairSystemDemo_companyRequestAlerts_v1';
@@ -1392,7 +1391,6 @@ const deviceStatusMap = {
       return map[status] || status || '—';
     }
 
-
     function loadCompanyRequestAlerts(){
       try{ return JSON.parse(localStorage.getItem(COMPANY_REQUEST_ALERTS_KEY) || '[]'); }
       catch{ return []; }
@@ -1549,7 +1547,6 @@ const deviceStatusMap = {
       renderDelivery();
       renderReturns();
     }
-
 
     function formatMoneyIQD(value){
       return Number(value || 0).toLocaleString('ar-IQ');
@@ -1831,7 +1828,6 @@ const deviceStatusMap = {
       }
     }
 
-
     function renderDashboard(){
       const today = new Date().toISOString().split('T')[0];
       const now = new Date();
@@ -1893,7 +1889,6 @@ const deviceStatusMap = {
         dl.innerHTML = deviceBrandSuggestions();
       });
     }
-
 
 function renderShopReceive(){
       refreshDeviceBrandList();
@@ -2164,7 +2159,6 @@ function renderShopReceive(){
       if(statusEl) statusEl.value = 'received';
     }
 
-
 function renderDevices(){
       const filteredDevices = getFilteredDevices();
       const overdueCount = db.devices.filter(d => {
@@ -2263,7 +2257,6 @@ function renderDevices(){
         });
       });
     }
-
 
     
     function printReceipt(deviceId){
@@ -2507,7 +2500,6 @@ window.addEventListener('load', function(){
       }
     }
 
-
     function showDeviceSummaryByReceipt(receiptNumber){
       const summary = DataAPI.getDeviceSummaryByReceipt(receiptNumber);
       if(!summary){
@@ -2743,7 +2735,6 @@ window.addEventListener('load', function(){
 
       `;
     }
-
 
     async function createSupplyRequest(e){
       e.preventDefault();
