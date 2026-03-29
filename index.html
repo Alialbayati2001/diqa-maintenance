@@ -332,23 +332,17 @@
         <div class="grid grid-2">
           <div>
             <label>اسم المستخدم</label>
-            <input id="loginUsername" placeholder="مثال: employee" />
+            <input id="loginUsername" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
           </div>
           <div>
             <label>كلمة المرور</label>
-            <input id="loginPassword" type="password" placeholder="1234" />
+            <input id="loginPassword" type="password" autocomplete="new-password" />
           </div>
         </div>
         <div style="margin-top:14px">
           <button onclick="login()">دخول</button>
         </div>
-        <div style="margin-top:16px" class="card panel">
-          <div class="hint">حسابات تجريبية:</div>
-          <div class="hint" style="margin-top:8px">موظف المحل: employee / 1000</div>
-          <div class="hint">فني الصيانة: technician / 1999</div>
-          <div class="hint">موظف الشركة: company / 1001</div>
-          <div class="hint">المدير: manager / Adgj1357</div>
-        </div>
+
       </div>
     </section>
 
@@ -411,10 +405,10 @@
     const COMPANY_REQUEST_ALERTS_KEY = 'repairSystemDemo_companyRequestAlerts_v1';
     const DEFAULT_DB = {
       users: [
-        {id:'u1', username:'employee', password:'1000', fullName:'موظف المحل', role:'employee'},
-        {id:'u2', username:'technician', password:'1999', fullName:'فني الصيانة', role:'technician'},
-        {id:'u3', username:'company', password:'1001', fullName:'موظف الشركة', role:'company'},
-        {id:'u4', username:'manager', password:'Adgj1357', fullName:'المدير', role:'manager'}
+        {id:'u1', username:'mm', password:'1999', fullName:'موظف الاستلام', role:'employee'},
+        {id:'u2', username:'ma', password:'9999', fullName:'موظف الصيانة', role:'technician'},
+        {id:'u3', username:'ss', password:'1111', fullName:'موظف الشركة', role:'company'},
+        {id:'u4', username:'man', password:'Adgj1357', fullName:'المدير', role:'manager'}
       ],
       devices: [],
       supplyRequests: [],
@@ -484,6 +478,7 @@ const APP_CONFIG = {
       }
       try {
         const parsed = JSON.parse(raw);
+        parsed.users = structuredClone(DEFAULT_DB.users);
         parsed.devices = (parsed.devices || []).map((d, index) => ({
           completedAt: null,
           notRepairedAt: null,
@@ -504,13 +499,27 @@ const APP_CONFIG = {
 
     function getRemoteMetaPayload(){
       return {
+        users: Array.isArray(db.users) && db.users.length ? db.users : structuredClone(DEFAULT_DB.users),
         counters: db.counters || { receipt: 1 }
       };
     }
 
     function sanitizeRemoteMetaPayload(payload){
       const safe = payload && typeof payload === 'object' ? payload : {};
+      const safeUsers = Array.isArray(safe.users)
+        ? safe.users
+            .filter(u => u && typeof u === 'object')
+            .map(u => ({
+              id: String(u.id || ''),
+              username: String(u.username || '').trim(),
+              password: String(u.password || ''),
+              fullName: String(u.fullName || '').trim(),
+              role: String(u.role || '').trim()
+            }))
+            .filter(u => u.id && u.username && u.password && u.fullName && u.role)
+        : [];
       return {
+        users: safeUsers.length ? safeUsers : structuredClone(DEFAULT_DB.users),
         counters: safe.counters && typeof safe.counters === 'object' ? safe.counters : { receipt: 1 }
       };
     }
@@ -924,6 +933,7 @@ const APP_CONFIG = {
           if(savingPromise) return;
           const stateRow = await AppStateAPI.get();
           const payload = sanitizeRemoteMetaPayload(stateRow?.payload || {});
+          db.users = payload.users || structuredClone(DEFAULT_DB.users);
           db.counters = { ...(db.counters || {}), ...(payload.counters || {}) };
           saveDB(true);
           if(currentUser) renderAll();
@@ -1042,6 +1052,7 @@ const APP_CONFIG = {
         db = {
           ...structuredClone(DEFAULT_DB),
           ...db,
+          users: remoteMeta.users || structuredClone(DEFAULT_DB.users),
           devices,
           supplyRequests,
           partSlips,
