@@ -218,6 +218,33 @@
     .summary-card .v{font-size:15px;font-weight:700}
     .summary-card.full{grid-column:1/-1}
     .summary-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}
+    .stat.clickable{
+      cursor:pointer;
+      transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
+    }
+    .stat.clickable:hover{
+      transform:translateY(-3px);
+      box-shadow:0 10px 24px rgba(44,185,194,.18);
+    }
+    .quick-list{
+      margin-top:16px;
+      border:2px solid var(--line);
+      border-radius:16px;
+      padding:14px;
+      background:#fff;
+    }
+    .quick-list h3{
+      margin:0;
+      font-size:18px;
+    }
+    .close-row{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      margin-bottom:12px;
+    }
+
   
     body, h1, h2, h3, h4, h5, h6, p, label, span, td, th, div, a {
       color:#2cb9c2 !important;
@@ -1626,6 +1653,182 @@ const deviceStatusMap = {
       await deleteDeviceCascade(deviceId, `هل تريد حذف وصل الاستلام رقم ${db.devices.find(x => x.id === deviceId)?.receiptNumber || '—'} نهائياً؟ سيتم حذف أي طلبات تجهيز أو وصولات أو عمليات إتمام مرتبطة به أيضاً.`);
     }
 
+    
+
+    function isSameDayIso(isoValue, day){
+      return !!isoValue && String(isoValue).startsWith(day);
+    }
+
+    function getOverdueDevicesList(){
+      const now = new Date();
+      return db.devices.filter(d => {
+        if(!d.createdAt) return false;
+        const ageDays = (now - new Date(d.createdAt)) / (1000 * 60 * 60 * 24);
+        return ageDays >= 3 && !['complete', 'delivered', 'not_repaired'].includes(d.status);
+      });
+    }
+
+    function getTodayReceivedDevices(){
+      const today = new Date().toISOString().split('T')[0];
+      return db.devices.filter(d => isSameDayIso(d.createdAt, today));
+    }
+
+    function getTodayDeliveredDevices(){
+      const today = new Date().toISOString().split('T')[0];
+      return db.devices.filter(d => isSameDayIso(d.deliveredAt, today));
+    }
+
+    function getTodayCompletedDevices(){
+      const today = new Date().toISOString().split('T')[0];
+      return db.devices.filter(d => isSameDayIso(d.completedAt, today));
+    }
+
+    function getPendingTechnicianSlips(){
+      return db.partSlips.filter(x => x.status === 'pending');
+    }
+
+    function closeDashboardQuickList(){
+      const box = document.getElementById('dashboardQuickList');
+      if(box) box.innerHTML = '';
+    }
+
+    function openDeviceFromDashboard(deviceId){
+      const device = db.devices.find(x => x.id === deviceId);
+      highlightedDeviceId = deviceId || null;
+      if(device){
+        deviceFilters.search = String(device.receiptNumber || '').trim();
+        deviceFilters.type = 'all';
+      }
+      openSection('devices');
+      setTimeout(() => {
+        const row = document.getElementById(`device_row_${deviceId}`);
+        if(row) row.scrollIntoView({ behavior:'smooth', block:'center' });
+      }, 120);
+    }
+
+    function renderQuickDevicesTable(title, items){
+      if(!items.length){
+        return `
+          <div class="quick-list">
+            <div class="close-row">
+              <h3>${escapeHtml(title)}</h3>
+              <button class="small danger" type="button" onclick="closeDashboardQuickList()">إغلاق</button>
+            </div>
+            <div class="muted">لا توجد بيانات</div>
+          </div>
+        `;
+      }
+
+      const rows = items.map(d => `
+        <tr>
+          <td>${escapeHtml(d.receiptNumber || '—')}</td>
+          <td>${escapeHtml(d.customerName || '—')}</td>
+          <td>${escapeHtml(d.deviceType || '—')}</td>
+          <td>${escapeHtml(d.phone || '—')}</td>
+          <td>${badge(deviceStatusMap, d.status)}</td>
+          <td>${formatDateTime(d.createdAt || d.completedAt || d.deliveredAt || d.updatedAt)}</td>
+          <td><button type="button" class="small info" onclick="openDeviceFromDashboard('${d.id}')">فتح</button></td>
+        </tr>
+      `).join('');
+
+      return `
+        <div class="quick-list">
+          <div class="close-row">
+            <h3>${escapeHtml(title)}</h3>
+            <button class="small danger" type="button" onclick="closeDashboardQuickList()">إغلاق</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>رقم الوصل</th>
+                  <th>الزبون</th>
+                  <th>الجهاز</th>
+                  <th>الهاتف</th>
+                  <th>الحالة</th>
+                  <th>الوقت</th>
+                  <th>فتح</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderQuickPartSlipsTable(title, items){
+      if(!items.length){
+        return `
+          <div class="quick-list">
+            <div class="close-row">
+              <h3>${escapeHtml(title)}</h3>
+              <button class="small danger" type="button" onclick="closeDashboardQuickList()">إغلاق</button>
+            </div>
+            <div class="muted">لا توجد وصولات معلقة</div>
+          </div>
+        `;
+      }
+
+      const rows = items.map(p => `
+        <tr>
+          <td>${escapeHtml(p.receiptNumber || '—')}</td>
+          <td>${escapeHtml(p.customerName || '—')}</td>
+          <td>${escapeHtml(p.partDescription || '—')}</td>
+          <td>${escapeHtml(p.preparedBy || '—')}</td>
+          <td>${badge(partStatusMap, p.status)}</td>
+          <td>${formatDateTime(p.createdAt || p.updatedAt)}</td>
+        </tr>
+      `).join('');
+
+      return `
+        <div class="quick-list">
+          <div class="close-row">
+            <h3>${escapeHtml(title)}</h3>
+            <button class="small danger" type="button" onclick="closeDashboardQuickList()">إغلاق</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>رقم الوصل</th>
+                  <th>الزبون</th>
+                  <th>الوصل / القطعة</th>
+                  <th>الفني</th>
+                  <th>الحالة</th>
+                  <th>الوقت</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function openDashboardQuickList(type){
+      let html = '';
+
+      if(type === 'received_today'){
+        html = renderQuickDevicesTable('الأجهزة المستلمة اليوم', getTodayReceivedDevices());
+      }else if(type === 'delivered_today'){
+        html = renderQuickDevicesTable('الأجهزة المسلمة اليوم', getTodayDeliveredDevices());
+      }else if(type === 'completed_today'){
+        html = renderQuickDevicesTable('الأجهزة المكتملة اليوم', getTodayCompletedDevices());
+      }else if(type === 'overdue'){
+        html = renderQuickDevicesTable('الأجهزة المتأخرة', getOverdueDevicesList());
+      }else if(type === 'pending_parts'){
+        html = renderQuickPartSlipsTable('الوصولات المعلقة عند الفني', getPendingTechnicianSlips());
+      }
+
+      const box = document.getElementById('dashboardQuickList');
+      if(box){
+        box.innerHTML = html;
+        box.scrollIntoView({ behavior:'smooth', block:'start' });
+      }
+    }
+
+
     function renderDashboard(){
       const today = new Date().toISOString().split('T')[0];
       const now = new Date();
@@ -1654,18 +1857,18 @@ const deviceStatusMap = {
         </div>
         <div class="stats">
           <div class="stat"><div class="label">إجمالي الأجهزة</div><div class="value">${totalDevices}</div></div>
-          <div class="stat"><div class="label">استلام اليوم</div><div class="value">${receivedToday}</div></div>
-          <div class="stat"><div class="label">مكتمل اليوم</div><div class="value">${completedToday}</div></div>
-          <div class="stat"><div class="label">تم التسليم اليوم</div><div class="value">${deliveredToday}</div></div>
-          <div class="stat"><div class="label">الأجهزة المتأخرة</div><div class="value">${overdueDevices}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('received_today')"><div class="label">استلام اليوم</div><div class="value">${receivedToday}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('completed_today')"><div class="label">مكتمل اليوم</div><div class="value">${completedToday}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('delivered_today')"><div class="label">تم التسليم اليوم</div><div class="value">${deliveredToday}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('overdue')"><div class="label">الأجهزة المتأخرة</div><div class="value">${overdueDevices}</div></div>
           <div class="stat"><div class="label">طلبات تجهيز بانتظار الشركة</div><div class="value">${pendingSupply}</div></div>
-          <div class="stat"><div class="label">وصولات معلقة عند الفني</div><div class="value">${pendingParts}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('pending_parts')"><div class="label">وصولات معلقة عند الفني</div><div class="value">${pendingParts}</div></div>
           ${managerExtraStat}
         </div>
+        <div id="dashboardQuickList"></div>
       `;
     }
 
-    
     function handleDeviceTypeInput(input){
       if(!input) return;
       const val = String(input.value || '');
