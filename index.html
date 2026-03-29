@@ -661,6 +661,16 @@ const APP_CONFIG = {
           throw error;
         }
       },
+      async delete(deviceId){
+        const { error } = await supabaseClient
+          .from(APP_CONFIG.devicesTable)
+          .delete()
+          .eq('id', deviceId);
+        if(error){
+          console.error('Device delete failed:', error);
+          throw error;
+        }
+      },
       async syncAll(items){
         const rows = (items || []).map(item => this.serialize(item));
         if(rows.length){
@@ -1547,20 +1557,59 @@ const deviceStatusMap = {
       renderShopReceive();
     }
 
-    function deleteReceipt(deviceId){
+    async function deleteDeviceCascade(deviceId, customMessage=''){
+      if(!currentUser || currentUser.role !== 'manager'){
+        alert('فقط المدير يمكنه حذف الجهاز');
+        return;
+      }
+
       const d = db.devices.find(x => x.id === deviceId);
-      if(!d) return;
-      const ok = confirm(`هل تريد حذف وصل الاستلام رقم ${d.receiptNumber} نهائياً؟ سيتم حذف أي طلبات تجهيز أو وصولات أو عمليات إتمام مرتبطة به أيضاً.`);
+      if(!d){
+        alert('الجهاز غير موجود');
+        return;
+      }
+
+      const ok = confirm(customMessage || `هل تريد حذف الجهاز رقم الوصل ${d.receiptNumber} نهائياً؟ سيتم حذف أي طلبات تجهيز أو وصولات أو عمليات إتمام مرتبطة به أيضاً.`);
       if(!ok) return;
-      db.supplyRequests = db.supplyRequests.filter(x => x.deviceId !== deviceId);
-      db.partSlips = db.partSlips.filter(x => x.deviceId !== deviceId);
-      db.completions = db.completions.filter(x => x.deviceId !== deviceId);
-      db.devices = db.devices.filter(x => x.id !== deviceId);
-      if(editingReceiptId === deviceId) editingReceiptId = null;
-      saveDB();
-      buildNav();
-      renderAll();
-      alert('تم حذف وصل الاستلام بنجاح');
+
+      try{
+        if(APP_CONFIG.dataProvider === 'supabase'){
+          const relatedRequestIds = (db.supplyRequests || []).filter(x => x.deviceId === deviceId).map(x => x.id);
+          const relatedPartSlipIds = (db.partSlips || []).filter(x => x.deviceId === deviceId).map(x => x.id);
+          const relatedCompletionIds = (db.completions || []).filter(x => x.deviceId === deviceId).map(x => x.id);
+
+          if(relatedRequestIds.length){
+            const { error } = await supabaseClient.from(APP_CONFIG.supplyRequestsTable).delete().in('id', relatedRequestIds);
+            if(error) throw error;
+          }
+          if(relatedPartSlipIds.length){
+            const { error } = await supabaseClient.from(APP_CONFIG.partSlipsTable).delete().in('id', relatedPartSlipIds);
+            if(error) throw error;
+          }
+          if(relatedCompletionIds.length){
+            const { error } = await supabaseClient.from(APP_CONFIG.completionsTable).delete().in('id', relatedCompletionIds);
+            if(error) throw error;
+          }
+          await DevicesAPI.delete(deviceId);
+        }
+
+        db.supplyRequests = db.supplyRequests.filter(x => x.deviceId !== deviceId);
+        db.partSlips = db.partSlips.filter(x => x.deviceId !== deviceId);
+        db.completions = db.completions.filter(x => x.deviceId !== deviceId);
+        db.devices = db.devices.filter(x => x.id !== deviceId);
+        if(editingReceiptId === deviceId) editingReceiptId = null;
+        saveDB(true);
+        buildNav();
+        renderAll();
+        alert('تم حذف الجهاز بنجاح');
+      }catch(err){
+        console.error('deleteDeviceCascade failed:', err);
+        alert('تعذر حذف الجهاز');
+      }
+    }
+
+    async function deleteReceipt(deviceId){
+      await deleteDeviceCascade(deviceId, `هل تريد حذف وصل الاستلام رقم ${db.devices.find(x => x.id === deviceId)?.receiptNumber || '—'} نهائياً؟ سيتم حذف أي طلبات تجهيز أو وصولات أو عمليات إتمام مرتبطة به أيضاً.`);
     }
 
     function renderDashboard(){
@@ -1641,7 +1690,7 @@ function renderShopReceive(){
           <td>
             <div class="actions">
               <button type="button" class="small info" onclick="startEditReceipt('${d.id}')">تعديل</button>
-              <button type="button" class="small danger" onclick="deleteReceipt('${d.id}')">حذف</button>
+              ${currentUser && currentUser.role === 'manager' ? `<button type="button" class="small danger" onclick="deleteReceipt('${d.id}')">حذف</button>` : ''}
             </div>
           </td>
         </tr>
@@ -1676,7 +1725,7 @@ function renderShopReceive(){
         <div class="section-title" style="margin-bottom:10px">
           <div>
             <h2 style="font-size:18px">الوصولات القابلة للتعديل والحذف</h2>
-            <p>يمكن لموظف الاستلام والمدير تعديل أو حذف أي وصل استلام من هنا</p>
+            <p>يمكن لموظف الاستلام تعديل الوصولات، بينما الحذف النهائي متاح للمدير فقط</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -1931,6 +1980,9 @@ function renderDevices(){
               <button class="small secondary" onclick="printReceipt('${d.id}')">طباعة الوصل</button>
               ${(currentUser && ['employee','manager'].includes(currentUser.role) && d.status === 'complete') ? `
                 <button class="small gray" onclick="setDeviceDelivered('${d.id}')">تم التسليم</button>
+              ` : ''}
+              ${currentUser && currentUser.role === 'manager' ? `
+                <button class="small danger" onclick="deleteDeviceCascade('${d.id}')">حذف الجهاز</button>
               ` : ''}
             </div>
           </td>
