@@ -2027,8 +2027,8 @@ function renderDevices(){
             ${box('رقم الهاتف', escapeHtml(d.phone || '—'))}
             ${box('العطل', escapeHtml(d.faultDescription || '—'))}
             ${box('لون الجهاز', escapeHtml(d.deviceColor || '—'))}
-            ${box('مبلغ الصيانة', formatRepairAmountLabel(d.repairAmount), 'full-width')}
-            ${box('الملاحظات', escapeHtml(d.accessories || 'لا يوجد'), 'full-width notes-box')}
+            ${box('الملاحظات', escapeHtml(d.accessories || 'لا يوجد'), 'full-width')}
+            ${box('مبلغ الصيانة', formatRepairAmountLabel(d.repairAmount), 'full-width notes-box')}
           </div>
 
           <div class="bottom-row customer-bottom-row">
@@ -2069,8 +2069,8 @@ function renderDevices(){
             ${box('رقم الهاتف', escapeHtml(d.phone || '—'))}
             ${box('العطل', escapeHtml(d.faultDescription || '—'))}
             ${box('لون الجهاز', escapeHtml(d.deviceColor || '—'))}
-            ${box('مبلغ الصيانة', formatRepairAmountLabel(d.repairAmount), 'full-width')}
             ${box('الملاحظات', escapeHtml(d.accessories || 'لا يوجد'), 'full-width')}
+            ${box('مبلغ الصيانة', formatRepairAmountLabel(d.repairAmount), 'full-width')}
             ${box('ملاحظات الفني', '&nbsp;', 'full-width tech-notes')}
           </div>
         </section>`;
