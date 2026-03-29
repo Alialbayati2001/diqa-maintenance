@@ -2920,7 +2920,8 @@ window.addEventListener('load', function(){
     }
 
     function getCompletionEligibleDevices(){
-      return db.devices.filter(d => getPendingDevicePartSlips(d.id).length > 0);
+      const allowedStatuses = ['received','await_approval','await_parts'];
+      return db.devices.filter(d => allowedStatuses.includes(d.status) && getPendingDevicePartSlips(d.id).length > 0);
     }
 
     function prefillCompletion(partSlipId){
