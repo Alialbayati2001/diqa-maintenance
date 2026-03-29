@@ -3031,7 +3031,12 @@ window.addEventListener('load', function(){
             <div id="completionPartsBox" class="summary-grid"><div class="hint">اختر جهازاً أولاً</div></div>
             <div class="hint" style="margin-top:8px">لن يتم اعتماد الإتمام إلا إذا تم تحديد كل الوصولات المعلقة الخاصة بهذا الجهاز، حتى تبقى حالة الجهاز دقيقة.</div>
           </div>
-          <div style="grid-column:1/-1"><button type="submit">اعتماد إتمام الجهاز</button></div>
+          <div style="grid-column:1/-1">
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="submit">اعتماد إتمام الجهاز</button>
+              <button type="button" onclick="sendCompletionWhatsapp(document.getElementById('completionDeviceId')?.value)">واتساب</button>
+            </div>
+          </div>
         </form>
         <div style="height:16px"></div>
         <div class="table-wrap">
@@ -3051,6 +3056,45 @@ window.addEventListener('load', function(){
           </table>
         </div>
       `;
+    }
+
+    function normalizeWhatsappNumber(phone=''){
+      let value = String(phone || '').trim();
+      if(!value) return '';
+      value = value.replace(/[^\d+]/g, '');
+      if(value.startsWith('+')) value = value.slice(1);
+      if(value.startsWith('00')) value = value.slice(2);
+      if(value.startsWith('0')) value = '964' + value.slice(1);
+      if(!value.startsWith('964')) value = '964' + value.replace(/^964/, '');
+      return value;
+    }
+
+    function buildCompletionWhatsappMessage(device){
+      return `تم تصليح هاتفك (${device.deviceType || 'بدون اسم'}) يرجى التفضل إلى مركز الدقة لاستلامه`;
+    }
+
+    function sendCompletionWhatsapp(deviceId){
+      const cleanId = String(deviceId || '').trim();
+      if(!cleanId){
+        alert('اختر جهازاً أولاً');
+        return;
+      }
+      const device = db.devices.find(d => d.id === cleanId);
+      if(!device){
+        alert('الجهاز غير موجود');
+        return;
+      }
+      if(!device.phone){
+        alert('لا يوجد رقم هاتف للزبون');
+        return;
+      }
+      const phone = normalizeWhatsappNumber(device.phone);
+      if(!phone){
+        alert('رقم الهاتف غير صالح');
+        return;
+      }
+      const text = buildCompletionWhatsappMessage(device);
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
     }
 
     async function createCompletion(e){
