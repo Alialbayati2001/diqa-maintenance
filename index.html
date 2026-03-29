@@ -1103,6 +1103,9 @@ const APP_CONFIG = {
       Object.assign(device, patch);
       await DevicesAPI.update(deviceId, patch);
       saveDB();
+      if(currentSection === 'supplyRequests'){
+        refreshSupplyDeviceOptions();
+      }
       return true;
     }
 
@@ -2361,9 +2364,58 @@ window.addEventListener('load', function(){
       });
     }
 
+    function getAvailableSupplyDevices(searchTerm = ''){
+      const q = String(searchTerm || '').trim().toLowerCase();
+
+      return (db.devices || [])
+        .filter(d => ['received', 'in_progress', 'await_parts', 'awaiting_parts'].includes(d.status))
+        .filter(d => {
+          if(!q) return true;
+          const hay = [
+            d.receiptNumber,
+            d.customerName,
+            d.deviceType,
+            d.phone,
+            d.barcodeValue
+          ].filter(Boolean).join(' ').toLowerCase();
+          return hay.includes(q);
+        })
+        .sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+
+    function refreshSupplyDeviceOptions(){
+      const select = document.getElementById('supplyDeviceId');
+      const searchInput = document.getElementById('supplyDeviceSearch');
+      if(!select) return;
+
+      const currentValue = select.value;
+      const devices = getAvailableSupplyDevices(searchInput ? searchInput.value : '');
+      const options = [`<option value="">اختر</option>`]
+        .concat(
+          devices.map(d => `
+            <option value="${escapeHtml(d.id)}">
+              ${escapeHtml(d.receiptNumber)} — ${escapeHtml(d.customerName)} — ${escapeHtml(d.deviceType)}
+            </option>
+          `)
+        )
+        .join('');
+
+      select.innerHTML = options;
+
+      const stillExists = devices.some(d => d.id === currentValue);
+      if(stillExists) select.value = currentValue;
+
+      const emptyNote = document.getElementById('supplyDeviceEmptyNote');
+      if(emptyNote){
+        emptyNote.classList.toggle('hidden', devices.length > 0);
+      }
+    }
+
     function renderSupplyRequests(){
-      const availableDevices = db.devices;
-      const options = availableDevices.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.receiptNumber)} — ${escapeHtml(d.customerName)} — ${escapeHtml(d.deviceType)}</option>`).join('');
+      const availableDevices = getAvailableSupplyDevices();
+      const options = availableDevices.map(d => `
+        <option value="${escapeHtml(d.id)}">${escapeHtml(d.receiptNumber)} — ${escapeHtml(d.customerName)} — ${escapeHtml(d.deviceType)}</option>
+      `).join('');
       const rows = db.supplyRequests.map(r => `
         <tr>
           <td>${escapeHtml(r.salesInvoiceNumber || '—')}</td>
@@ -2384,12 +2436,19 @@ window.addEventListener('load', function(){
           </div>
         </div>
         <form class="grid grid-2" onsubmit="createSupplyRequest(event)">
+          <div style="grid-column:1/-1">
+            <label>بحث عن الجهاز بالاسم أو رقم الوصل</label>
+            <input id="supplyDeviceSearch" type="text" placeholder="اكتب رقم الوصل أو اسم الزبون أو نوع الجهاز" oninput="refreshSupplyDeviceOptions()" />
+          </div>
           <div>
             <label>اختيار جهاز مفحوص</label>
             <select id="supplyDeviceId" required>
               <option value="">اختر</option>
               ${options}
             </select>
+            <div id="supplyDeviceEmptyNote" class="hint ${availableDevices.length ? 'hidden' : ''}" style="margin-top:8px">
+              لا توجد أجهزة متاحة للتجهيز حالياً
+            </div>
           </div>
           <div>
             <label>رقم الفاتورة</label>
@@ -2479,6 +2538,7 @@ window.addEventListener('load', function(){
 
       `;
     }
+
 
     async function createSupplyRequest(e){
       e.preventDefault();
