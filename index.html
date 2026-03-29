@@ -2921,7 +2921,7 @@ window.addEventListener('load', function(){
 
     function getCompletionEligibleDevices(){
       const allowedStatuses = ['received','await_approval','await_parts'];
-      return db.devices.filter(d => allowedStatuses.includes(d.status) && getPendingDevicePartSlips(d.id).length > 0);
+      return db.devices.filter(d => allowedStatuses.includes(d.status));
     }
 
     function prefillCompletion(partSlipId){
@@ -2963,7 +2963,7 @@ window.addEventListener('load', function(){
       `;
 
       if(!pendingParts.length){
-        holder.innerHTML = '<div class="repeat-alert"><strong>لا توجد وصولات معلقة لهذا الجهاز</strong><span>هذا الجهاز لا يحتاج إتماماً جديداً حالياً.</span></div>';
+        holder.innerHTML = '<div class="repeat-alert"><strong>لا توجد وصولات معلقة لهذا الجهاز</strong><span>يمكن لفني الصيانة إتمام هذا الجهاز مباشرة بدون اختيار أي وصلة.</span></div>';
         return;
       }
 
@@ -2986,7 +2986,8 @@ window.addEventListener('load', function(){
       const availableDevices = getCompletionEligibleDevices();
       const options = availableDevices.map(d => {
         const pendingCount = getPendingDevicePartSlips(d.id).length;
-        return `<option value="${escapeHtml(d.id)}">${escapeHtml(d.receiptNumber)} — ${escapeHtml(d.customerName)} — ${escapeHtml(d.deviceType)} (${pendingCount} وصلة)</option>`;
+        const pendingLabel = pendingCount ? `${pendingCount} وصلة` : 'بدون وصولات';
+        return `<option value="${escapeHtml(d.id)}">${escapeHtml(d.receiptNumber)} — ${escapeHtml(d.customerName)} — ${escapeHtml(d.deviceType)} (${pendingLabel})</option>`;
       }).join('');
       const rows = db.completions.map(c => `
         <tr>
@@ -3030,7 +3031,7 @@ window.addEventListener('load', function(){
           <div style="grid-column:1/-1">
             <label>الوصولات التي ستدخل ضمن إتمام هذا الجهاز</label>
             <div id="completionPartsBox" class="summary-grid"><div class="hint">اختر جهازاً أولاً</div></div>
-            <div class="hint" style="margin-top:8px">لن يتم اعتماد الإتمام إلا إذا تم تحديد كل الوصولات المعلقة الخاصة بهذا الجهاز، حتى تبقى حالة الجهاز دقيقة.</div>
+            <div class="hint" style="margin-top:8px">إذا كانت هناك وصولات معلقة فيجب تحديدها كلها قبل الإتمام. أما إذا لم توجد أي وصلة لهذا الجهاز فيمكن إتمامه مباشرة.</div>
           </div>
           <div style="grid-column:1/-1">
             <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -3105,10 +3106,12 @@ window.addEventListener('load', function(){
       if(!device){ alert('اختر جهازاً صحيحاً'); return; }
 
       const pendingParts = getPendingDevicePartSlips(deviceId);
-      if(!pendingParts.length){ alert('هذا الجهاز لا يحتوي على وصولات معلقة'); return; }
-
       const selectedIds = Array.from(document.querySelectorAll('.completion-part-checkbox:checked')).map(el => el.value);
-      if(!selectedIds.length){ alert('حدد الوصولات التي تم استخدامها لهذا الجهاز'); return; }
+
+      if(pendingParts.length && !selectedIds.length){
+        alert('حدد الوصولات التي تم استخدامها لهذا الجهاز');
+        return;
+      }
 
       const remainingPending = pendingParts.filter(p => !selectedIds.includes(p.id));
       if(remainingPending.length){
