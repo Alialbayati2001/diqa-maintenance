@@ -85,7 +85,7 @@
       color:var(--text);
       outline:none;
     }
-    textarea{min-height:88px;resize:vertical}
+    textarea{min-height:48px;resize:vertical}
     button{
       border:0;
       border-radius:12px;
@@ -1119,7 +1119,7 @@ const APP_CONFIG = {
               <div style="margin-bottom:10px"><strong>الزبون:</strong> ${escapeHtml(device.customerName || '—')}</div>
               <div style="margin-bottom:10px"><strong>الجهاز:</strong> ${escapeHtml(device.deviceType || '—')}</div>
               <div style="margin-bottom:10px"><strong>اللون:</strong> ${escapeHtml(device.deviceColor || '—')}</div>
-              <div style="margin-bottom:10px"><strong>المبلغ:</strong> ${formatMoneyIQD(device.repairAmount || 0)} د.ع</div>
+              <div style="margin-bottom:10px"><strong>المبلغ:</strong> ${formatRepairAmountLabel(device.repairAmount)}</div>
               <div style="margin-top:14px;color:#0f766e"><strong>رقم الصيانة:</strong> ${escapeHtml(MAINTENANCE_PHONE || '—')}</div>
             </div>
           </div>
@@ -1501,6 +1501,12 @@ const deviceStatusMap = {
       return Number(value || 0).toLocaleString('ar-IQ');
     }
 
+    function formatRepairAmountLabel(value, withCurrency=true){
+      const amount = Number(value || 0);
+      if(amount <= 0) return 'يحدد بعد الفحص';
+      return withCurrency ? `${formatMoneyIQD(amount)} د.ع` : formatMoneyIQD(amount);
+    }
+
     function getReceivedMaintenanceTotal(){
       return db.devices
         .filter(d => d.status === 'delivered')
@@ -1628,7 +1634,7 @@ function renderShopReceive(){
           <td>${escapeHtml(d.customerName)}</td>
           <td>${escapeHtml(d.deviceType)}</td>
           <td>${escapeHtml(d.phone)}</td>
-          <td>${formatMoneyIQD(d.repairAmount || 0)}</td>
+          <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
           <td>${badge(deviceStatusMap, d.status)}</td>
           <td>${getDevicePartSlips(d.id).length} / مستخدم ${getUsedDevicePartSlips(d.id).length} / معلق ${getPendingDevicePartSlips(d.id).length}</td>
           <td>${escapeHtml(d.receivedBy || '—')}</td>
@@ -1653,12 +1659,12 @@ function renderShopReceive(){
           <div><label>اسم الزبون</label><input id="customerName" required /></div>
           <div><label>رقم الهاتف</label><input id="phone" required /></div>
           <div><label>نوع الجهاز</label><input id="deviceType" required /></div>
-          <div><label>لون الجهاز</label><input id="deviceColor" placeholder="مثال: أسود / أبيض / أزرق" /></div>
-          <div><label>اسم الموظف المستلم</label><input id="receivedBy" value="${currentUser ? escapeHtml(currentUser.fullName) : ''}" required /></div>
+          <div><label>لون الجهاز</label><input id="deviceColor" placeholder="مثال: أسود / أبيض / أزرق" required /></div>
+          <div><label>اسم الموظف المستلم</label><input id="receivedBy" placeholder="يكتب الموظف اسمه هنا" autocomplete="off" /></div>
           <div style="grid-column:1/-1"><label>العطل</label><textarea id="faultDescription" required></textarea></div>
           <div id="repeatedFaultAlertBox"></div>
-          <div><label>الملحقات المستلمة</label><input id="accessories" /></div>
-          <div><label>مبلغ الصيانة</label><input id="repairAmount" type="number" min="0" step="0.01" /></div>
+          <div><label>الملحقات المستلمة</label><input id="accessories" required /></div>
+          <div><label>مبلغ الصيانة</label><input id="repairAmount" type="number" min="0" step="0.01" placeholder="0 = يحدد بعد الفحص" required /></div>
           <div><label>تاريخ الاستلام</label><input id="receiveDate" type="date" required /></div>
           <div><label>الوقت</label><input id="receiveTime" type="time" required /></div>
           <div style="grid-column:1/-1" class="actions">
@@ -1715,6 +1721,35 @@ function renderShopReceive(){
       const deviceType = normalizeBrandInput(document.getElementById('deviceType').value.trim());
       const deviceColor = document.getElementById('deviceColor').value.trim();
       const faultDescription = document.getElementById('faultDescription').value.trim();
+      const accessories = document.getElementById('accessories').value.trim();
+      const receivedBy = document.getElementById('receivedBy').value.trim();
+      const repairAmountRaw = document.getElementById('repairAmount').value.trim();
+      const repairAmount = Number(repairAmountRaw || 0);
+      const receiveDate = document.getElementById('receiveDate').value;
+      const receiveTime = document.getElementById('receiveTime').value;
+
+      const requiredChecks = [
+        ['اسم الزبون', customerName],
+        ['رقم الهاتف', phone],
+        ['نوع الجهاز', deviceType],
+        ['لون الجهاز', deviceColor],
+        ['العطل', faultDescription],
+        ['الملحقات المستلمة', accessories],
+        ['اسم الموظف المستلم', receivedBy],
+        ['مبلغ الصيانة', repairAmountRaw === '' ? '' : repairAmountRaw],
+        ['تاريخ الاستلام', receiveDate],
+        ['الوقت', receiveTime]
+      ];
+      const missingField = requiredChecks.find(([, value]) => String(value).trim() === '');
+      if(missingField){
+        alert(`يرجى ملء حقل: ${missingField[0]}`);
+        return;
+      }
+      if(Number.isNaN(repairAmount) || repairAmount < 0){
+        alert('يرجى إدخال مبلغ صيانة صحيح');
+        return;
+      }
+
       const repeated = findRecentRepeatedFault(customerName, phone, deviceType, faultDescription, editingReceiptId);
       if(repeated){
         const go = confirm(`⚠️ هذا الجهاز لديه عطل متكرر لنفس الزبون خلال آخر 20 يوم
@@ -1739,11 +1774,11 @@ function renderShopReceive(){
         current.deviceType = deviceType;
         current.deviceColor = deviceColor;
         current.faultDescription = faultDescription;
-        current.accessories = document.getElementById('accessories').value.trim();
-        current.repairAmount = Number(document.getElementById('repairAmount').value || 0);
-        current.receiveDate = document.getElementById('receiveDate').value;
-        current.receiveTime = document.getElementById('receiveTime').value;
-        current.receivedBy = document.getElementById('receivedBy').value.trim();
+        current.accessories = accessories;
+        current.repairAmount = repairAmount;
+        current.receiveDate = receiveDate;
+        current.receiveTime = receiveTime;
+        current.receivedBy = receivedBy;
         current.updatedAt = nowISO();
         current.barcodeValue = current.barcodeValue || buildBarcodeValue(current.receiptNumber);
         await DevicesAPI.upsert(current);
@@ -1771,11 +1806,11 @@ function renderShopReceive(){
         deviceType,
         deviceColor,
         faultDescription,
-        accessories: document.getElementById('accessories').value.trim(),
-        repairAmount: Number(document.getElementById('repairAmount').value || 0),
-        receiveDate: document.getElementById('receiveDate').value,
-        receiveTime: document.getElementById('receiveTime').value,
-        receivedBy: document.getElementById('receivedBy').value.trim(),
+        accessories,
+        repairAmount,
+        receiveDate,
+        receiveTime,
+        receivedBy,
         status: 'received',
         createdAt: nowISO(),
         updatedAt: nowISO(),
@@ -1880,7 +1915,7 @@ function renderDevices(){
           <td>${escapeHtml(d.deviceColor || '—')}</td>
           <td>${escapeHtml(d.phone)}</td>
           <td>${badge(deviceStatusMap, d.status)}</td>
-          <td>${formatMoneyIQD(d.repairAmount || 0)}</td>
+          <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
           <td>${escapeHtml(d.receivedBy || '—')}</td>
           <td>${escapeHtml(d.receiveDate || '—')}<br><span class="muted">${escapeHtml(d.receiveTime || '')}</span></td>
           <td><svg id="barcode_${d.id}"></svg></td>
@@ -2206,7 +2241,7 @@ window.addEventListener('load', function(){
         alert('لم يتم العثور على الوصل');
         return;
       }
-      alert(`رقم الوصل: ${summary.receiptNumber}\nالزبون: ${summary.customerName}\nالحالة: ${summary.statusLabel}\nنوع الجهاز: ${summary.deviceType}\nالمبلغ: ${formatMoneyIQD(summary.amount)} د.ع`);
+      alert(`رقم الوصل: ${summary.receiptNumber}\nالزبون: ${summary.customerName}\nالحالة: ${summary.statusLabel}\nنوع الجهاز: ${summary.deviceType}\nالمبلغ: ${formatRepairAmountLabel(summary.amount)}`);
     }
 
     function openSummaryFromSearch(){
@@ -2824,7 +2859,7 @@ window.addEventListener('load', function(){
           <td>${escapeHtml(d.receiptNumber)}</td>
           <td>${escapeHtml(d.customerName)}</td>
           <td>${escapeHtml(d.deviceType)}</td>
-          <td>${Number(d.repairAmount || 0).toLocaleString('ar-IQ')}</td>
+          <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
           <td>${badge(deviceStatusMap, d.status)}</td>
           <td>${escapeHtml(d.deliveredBy || '—')}</td>
           <td>${formatDateTime(d.deliveredAt)}</td>
