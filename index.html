@@ -1385,6 +1385,7 @@ const deviceStatusMap = {
         await_approval: 'قيد الصيانة',
         await_parts: 'قيد الصيانة',
         complete: 'تم التصليح',
+        delivered_company: 'تم إرساله للشركة للتسليم',
         delivered: 'تم التسليم',
         not_repaired: 'تعذر التصليح'
       };
@@ -1503,7 +1504,9 @@ const deviceStatusMap = {
         delivery:'التسليم',
         returns:'طلبات الإرجاع'
       };
-      const companyPendingCount = db.supplyRequests.filter(r => r.status === 'pending').length;
+      const companyPendingRequestsCount = db.supplyRequests.filter(r => r.status === 'pending').length;
+      const companyDeliveryCount = db.devices.filter(d => d.status === 'delivered_company').length;
+      const companyPendingCount = companyPendingRequestsCount + companyDeliveryCount;
       const html = allowedSections().map(key => {
         let label = items[key];
         if(key === 'company' && companyPendingCount > 0){
@@ -2798,6 +2801,20 @@ window.addEventListener('load', function(){
           </td>
         </tr>
       `).join('');
+
+      const companyDeliveryRows = db.devices
+        .filter(d => d.status === 'delivered_company')
+        .map(d => `
+          <tr>
+            <td>${escapeHtml(d.receiptNumber)}</td>
+            <td>${escapeHtml(d.customerName)}</td>
+            <td>${escapeHtml(d.deviceType)}</td>
+            <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
+            <td>${badge(deviceStatusMap, d.status)}</td>
+            <td><button class="small gray" onclick="setDeviceDelivered('${d.id}')">تم التسليم</button></td>
+          </tr>
+        `).join('');
+
       document.getElementById('companySection').innerHTML = `
         <div class="section-title">
           <div>
@@ -2821,6 +2838,31 @@ window.addEventListener('load', function(){
               </tr>
             </thead>
             <tbody>${rows || `<tr><td colspan="9" class="muted">لا توجد طلبات واردة</td></tr>`}</tbody>
+          </table>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <div class="section-title">
+          <div>
+            <h2>الأجهزة المرسلة للشركة / دلفري</h2>
+            <p>الأجهزة التي تم إرسالها من المحل وتنتظر التسليم النهائي من موظف الشركة</p>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>رقم الوصل</th>
+                <th>الزبون</th>
+                <th>الجهاز</th>
+                <th>المبلغ</th>
+                <th>الحالة</th>
+                <th>إجراء</th>
+              </tr>
+            </thead>
+            <tbody>${companyDeliveryRows || `<tr><td colspan="6" class="muted">لا توجد أجهزة بانتظار التسليم من الشركة</td></tr>`}</tbody>
           </table>
         </div>
       `;
@@ -3230,23 +3272,33 @@ window.addEventListener('load', function(){
     }
 
     function renderDelivery(){
-      const rows = db.devices.filter(d => d.status === 'complete' || d.status === 'delivered').map(d => `
-        <tr>
-          <td>${escapeHtml(d.receiptNumber)}</td>
-          <td>${escapeHtml(d.customerName)}</td>
-          <td>${escapeHtml(d.deviceType)}</td>
-          <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
-          <td>${badge(deviceStatusMap, d.status)}</td>
-          <td>${escapeHtml(d.deliveredBy || '—')}</td>
-          <td>${formatDateTime(d.deliveredAt)}</td>
-          <td>${d.status === 'complete' ? `<button class="small gray" onclick="setDeviceDelivered('${d.id}')">تأكيد التسليم</button>` : '<span class="muted">تم</span>'}</td>
-        </tr>
-      `).join('');
+      const rows = db.devices
+        .filter(d => ['complete','delivered_company','delivered'].includes(d.status))
+        .map(d => `
+          <tr>
+            <td>${escapeHtml(d.receiptNumber)}</td>
+            <td>${escapeHtml(d.customerName)}</td>
+            <td>${escapeHtml(d.deviceType)}</td>
+            <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
+            <td>${badge(deviceStatusMap, d.status)}</td>
+            <td>${escapeHtml(d.deliveredBy || '—')}</td>
+            <td>${formatDateTime(d.deliveredAt)}</td>
+            <td>
+              ${
+                d.status === 'complete'
+                ? `<button class="small" onclick="setDeviceDeliveredToCompany('${d.id}')">تم إرسال الجهاز للشركة / دلفري</button>`
+                : d.status === 'delivered_company'
+                ? `<span class="muted">تم إرساله للشركة</span>`
+                : `<span class="muted">تم التسليم</span>`
+              }
+            </td>
+          </tr>
+        `).join('');
       document.getElementById('deliverySection').innerHTML = `
         <div class="section-title">
           <div>
-            <h2>تسليم الجهاز للزبون</h2>
-            <p>الأجهزة المكتملة الجاهزة للتسليم</p>
+            <h2>تسليم الجهاز</h2>
+            <p>إرسال الأجهزة المكتملة إلى الشركة أو متابعة التسليم</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -3263,7 +3315,7 @@ window.addEventListener('load', function(){
                 <th>إجراء</th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="8" class="muted">لا توجد أجهزة جاهزة للتسليم</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="8" class="muted">لا توجد أجهزة جاهزة</td></tr>`}</tbody>
           </table>
         </div>
       `;
