@@ -2194,8 +2194,7 @@ function renderDevices(){
               ${(currentUser && ['technician','manager'].includes(currentUser.role)) ? `
                 <button class="small info" onclick="setDeviceStatus('${d.id}','await_approval')">انتظار موافقة</button>
                 <button class="small warning" onclick="setDeviceStatus('${d.id}','await_parts')">انتظار قطع</button>
-                <button class="small" onclick="setDeviceStatus('${d.id}','complete')">مكتمل</button>
-                <button class="small danger" onclick="markDeviceNotRepaired('${d.id}')">لم يتم التصليح</button>
+<button class="small danger" onclick="markDeviceNotRepaired('${d.id}')">لم يتم التصليح</button>
               ` : ''}
               <button class="small secondary" onclick="printReceipt('${d.id}')">طباعة الوصل</button>
               ${(currentUser && ['employee','manager'].includes(currentUser.role) && d.status === 'complete') ? `
