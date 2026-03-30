@@ -748,6 +748,26 @@ const APP_CONFIG = {
 
     function createArrayTableAPI(config){
       return {
+        mapRow: config.mapRow,
+        serialize: config.serialize,
+        async insertOne(item){
+          const row = config.serialize(item);
+          const { error } = await supabaseClient.from(config.table).insert(row);
+          if(error){
+            console.error(config.table + ' insert failed:', error);
+            throw error;
+          }
+          return row;
+        },
+        async upsertOne(item){
+          const row = config.serialize(item);
+          const { error } = await supabaseClient.from(config.table).upsert(row, { onConflict: 'id' });
+          if(error){
+            console.error(config.table + ' upsert one failed:', error);
+            throw error;
+          }
+          return row;
+        },
         async getAll(){
           const { data, error } = await supabaseClient.from(config.table).select('*').order(config.orderBy, { ascending: false });
           if(error){
@@ -2956,11 +2976,30 @@ window.addEventListener('load', function(){
         };
 
         if(APP_CONFIG.dataProvider === 'supabase'){
-          const serializedRequest = SupplyRequestsAPI.serialize(requestItem);
-          const { error: insertError } = await supabaseClient
-            .from(APP_CONFIG.supplyRequestsTable)
-            .insert(serializedRequest);
-          if(insertError) throw insertError;
+          if(typeof SupplyRequestsAPI.insertOne === 'function'){
+            await SupplyRequestsAPI.insertOne(requestItem);
+          } else {
+            const serializedRequest = (typeof SupplyRequestsAPI.serialize === 'function') ? SupplyRequestsAPI.serialize(requestItem) : {
+              id: requestItem.id,
+              device_id: requestItem.deviceId,
+              request_number: requestItem.salesInvoiceNumber || null,
+              sales_invoice_amount: Number(requestItem.salesInvoiceAmount || 0),
+              requested_part: requestItem.partDescription || '',
+              notes: requestItem.notes || '',
+              status: requestItem.status || 'pending',
+              requested_by: requestItem.sentBy || '',
+              company_handled_by: requestItem.companyHandledBy || null,
+              receipt_number_snapshot: requestItem.receiptNumber || '',
+              customer_name_snapshot: requestItem.customerName || '',
+              quantity: 1,
+              requested_at: requestItem.createdAt || new Date().toISOString(),
+              updated_at: requestItem.updatedAt || new Date().toISOString()
+            };
+            const { error: insertError } = await supabaseClient
+              .from(APP_CONFIG.supplyRequestsTable)
+              .insert(serializedRequest);
+            if(insertError) throw insertError;
+          }
         }
 
         db.supplyRequests.unshift(requestItem);
