@@ -1862,6 +1862,23 @@ const deviceStatusMap = {
       }, 120);
     }
 
+    function getCompletionUsedSlipNumbers(deviceId){
+      if(!deviceId) return [];
+
+      const completion = (db.completions || []).find(c => c.deviceId === deviceId);
+      if(!completion) return [];
+
+      const partSlipIds = Array.isArray(completion.partSlipIds) ? completion.partSlipIds : [];
+
+      const usedSlipNumbers = partSlipIds
+        .map(id => (db.partSlips || []).find(p => p.id === id))
+        .filter(Boolean)
+        .map(p => String(p.receiptNumber || '').trim())
+        .filter(Boolean);
+
+      return [...new Set(usedSlipNumbers)];
+    }
+
     function renderQuickDevicesTable(title, items){
       if(!items.length){
         return `
@@ -1875,17 +1892,25 @@ const deviceStatusMap = {
         `;
       }
 
-      const rows = items.map(d => `
-        <tr>
-          <td>${escapeHtml(d.receiptNumber || '—')}</td>
-          <td>${escapeHtml(d.customerName || '—')}</td>
-          <td>${escapeHtml(d.deviceType || '—')}</td>
-          <td>${escapeHtml(d.phone || '—')}</td>
-          <td>${badge(deviceStatusMap, d.status)}</td>
-          <td>${formatDateTime(d.createdAt || d.completedAt || d.deliveredAt || d.updatedAt)}</td>
-          <td><button type="button" class="small info" onclick="openDeviceFromDashboard('${d.id}')">فتح</button></td>
-        </tr>
-      `).join('');
+      const showUsedSlipNumbersColumn = title === 'الأجهزة المسلمة اليوم';
+
+      const rows = items.map(d => {
+        const usedSlipNumbers = showUsedSlipNumbersColumn ? getCompletionUsedSlipNumbers(d.id) : [];
+        const usedSlipNumbersText = usedSlipNumbers.length ? usedSlipNumbers.join(' - ') : '—';
+
+        return `
+          <tr>
+            <td>${escapeHtml(d.receiptNumber || '—')}</td>
+            ${showUsedSlipNumbersColumn ? `<td>${escapeHtml(usedSlipNumbersText)}</td>` : ''}
+            <td>${escapeHtml(d.customerName || '—')}</td>
+            <td>${escapeHtml(d.deviceType || '—')}</td>
+            <td>${escapeHtml(d.phone || '—')}</td>
+            <td>${badge(deviceStatusMap, d.status)}</td>
+            <td>${formatDateTime(d.deliveredAt || d.createdAt || d.completedAt || d.updatedAt)}</td>
+            <td><button type="button" class="small info" onclick="openDeviceFromDashboard('${d.id}')">فتح</button></td>
+          </tr>
+        `;
+      }).join('');
 
       return `
         <div class="quick-list">
@@ -1898,6 +1923,7 @@ const deviceStatusMap = {
               <thead>
                 <tr>
                   <th>رقم الوصل</th>
+                  ${showUsedSlipNumbersColumn ? '<th>أرقام الوصولات المستخدمة</th>' : ''}
                   <th>الزبون</th>
                   <th>الجهاز</th>
                   <th>الهاتف</th>
