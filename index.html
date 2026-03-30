@@ -1594,6 +1594,10 @@ const deviceStatusMap = {
       return Number(value || 0).toLocaleString('ar-IQ');
     }
 
+    function formatCurrency(value){
+      return `${formatMoneyIQD(value)} د.ع`;
+    }
+
     function formatRepairAmountLabel(value, withCurrency=true){
       const amount = Number(value || 0);
       if(amount <= 0) return 'يحدد بعد الفحص';
