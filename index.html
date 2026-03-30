@@ -2882,38 +2882,90 @@ window.addEventListener('load', function(){
 
     async function createSupplyRequest(e){
       e.preventDefault();
-      const deviceId = document.getElementById('supplyDeviceId').value;
-      const device = db.devices.find(d => d.id === deviceId);
-      if(!device){ alert('اختر جهازًا صحيحًا'); return; }
-      const salesInvoiceNumber = document.getElementById('salesInvoiceNumber').value.trim();
-      const salesInvoiceAmount = Number(document.getElementById('salesInvoiceAmount').value || 0);
-      if(db.supplyRequests.some(r => r.salesInvoiceNumber === salesInvoiceNumber)){
-        alert('رقم الفاتورة مستخدم مسبقًا');
-        return;
+      const submitBtn = e.submitter || e.target.querySelector('button[type="submit"], button:not([type])');
+      if(submitBtn) submitBtn.disabled = true;
+      try {
+        const deviceId = document.getElementById('supplyDeviceId').value;
+        const device = db.devices.find(d => d.id === deviceId);
+        if(!device){ alert('اختر جهازًا صحيحًا'); return; }
+
+        const salesInvoiceNumber = document.getElementById('salesInvoiceNumber').value.trim();
+        const salesInvoiceAmount = Number(document.getElementById('salesInvoiceAmount').value || 0);
+        const partDescription = document.getElementById('partDescription').value.trim();
+        const notes = document.getElementById('supplyNotes').value.trim();
+
+        if(!salesInvoiceNumber || !partDescription){
+          alert('أكمل رقم الفاتورة والقطعة المطلوبة');
+          return;
+        }
+
+        if(db.supplyRequests.some(r => String(r.salesInvoiceNumber || '').trim() === salesInvoiceNumber)){
+          alert('رقم الفاتورة مستخدم مسبقًا');
+          return;
+        }
+
+        if(APP_CONFIG.dataProvider === 'supabase'){
+          const { data: duplicateRemote, error: duplicateError } = await supabaseClient
+            .from(APP_CONFIG.supplyRequestsTable)
+            .select('id')
+            .eq('request_number', salesInvoiceNumber)
+            .limit(1);
+          if(duplicateError) throw duplicateError;
+          if((duplicateRemote || []).length){
+            alert('رقم الفاتورة مستخدم مسبقًا');
+            return;
+          }
+        }
+
+        const requestItem = {
+          id: uid('req'),
+          salesInvoiceNumber,
+          salesInvoiceAmount,
+          deviceId: device.id,
+          receiptNumber: device.receiptNumber,
+          customerName: device.customerName,
+          partDescription,
+          notes,
+          status: 'pending',
+          sentBy: currentUser ? currentUser.fullName : '—',
+          companyHandledBy: null,
+          createdAt: nowISO(),
+          updatedAt: nowISO()
+        };
+
+        db.supplyRequests.unshift(requestItem);
+        await updateDeviceStatus(device.id, 'await_parts');
+
+        if(APP_CONFIG.dataProvider === 'supabase' && isHydrated){
+          const serializedRequest = SupplyRequestsAPI.serialize(requestItem);
+          const { error: insertError } = await supabaseClient
+            .from(APP_CONFIG.supplyRequestsTable)
+            .upsert(serializedRequest, { onConflict: 'id' });
+          if(insertError) throw insertError;
+        }
+
+        saveDB();
+        await flushSaveDB();
+
+        if(APP_CONFIG.dataProvider === 'supabase' && isHydrated){
+          db.supplyRequests = await SupplyRequestsAPI.getAll();
+          saveDB(true);
+        }
+
+        buildNav();
+        notifyCompanyRequestsIfNeeded();
+        e.target.reset();
+        const searchInput = document.getElementById('supplyDeviceSearch');
+        if(searchInput) searchInput.value = '';
+        renderAll();
+        buildNav();
+        alert('تم إنشاء الفاتورة وإرسالها إلى صفحة الشركة بنجاح');
+      } catch(err){
+        console.error('createSupplyRequest error:', err);
+        alert('حدث خطأ أثناء إرسال الفاتورة إلى صفحة الشركة');
+      } finally {
+        if(submitBtn) submitBtn.disabled = false;
       }
-      db.supplyRequests.unshift({
-        id: uid('req'),
-        salesInvoiceNumber,
-        salesInvoiceAmount,
-        deviceId: device.id,
-        receiptNumber: device.receiptNumber,
-        customerName: device.customerName,
-        partDescription: document.getElementById('partDescription').value.trim(),
-        notes: document.getElementById('supplyNotes').value.trim(),
-        status: 'pending',
-        sentBy: currentUser ? currentUser.fullName : '—',
-        companyHandledBy: null,
-        createdAt: nowISO(),
-        updatedAt: nowISO()
-      });
-      await updateDeviceStatus(device.id, 'await_parts');
-      saveDB();
-      buildNav();
-      notifyCompanyRequestsIfNeeded();
-      alert('تم إنشاء الفاتورة وإرسالها إلى الشركة');
-      e.target.reset();
-      renderAll();
-      buildNav();
     }
 
     function renderCompany(){
