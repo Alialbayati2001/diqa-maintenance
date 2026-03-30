@@ -3936,7 +3936,7 @@ window.addEventListener('load', function(){
     async function setDeviceDeliveredToCustomer(deviceId){
       const device = db.devices.find(d => d.id === deviceId);
       if(!device) return;
-      const changed = await updateDeviceStatus(deviceId, 'delivered_customer', {
+      const changed = await updateDeviceStatus(deviceId, 'delivered', {
         deliveredAt: nowISO(),
         deliveredBy: currentUser ? currentUser.fullName : '—'
       });
