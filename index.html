@@ -2904,6 +2904,7 @@ window.addEventListener('load', function(){
       e.preventDefault();
       const submitBtn = e.submitter || e.target.querySelector('button[type="submit"], button:not([type])');
       if(submitBtn) submitBtn.disabled = true;
+      const prevRequests = Array.isArray(db.supplyRequests) ? db.supplyRequests.map(x => ({...x})) : [];
       try {
         const deviceId = document.getElementById('supplyDeviceId').value;
         const device = db.devices.find(d => d.id === deviceId);
@@ -2930,8 +2931,9 @@ window.addEventListener('load', function(){
             .select('id')
             .eq('request_number', salesInvoiceNumber)
             .limit(1);
-          if(duplicateError) throw duplicateError;
-          if((duplicateRemote || []).length){
+          if(duplicateError){
+            console.error('duplicate check error:', duplicateError);
+          } else if((duplicateRemote || []).length){
             alert('رقم الفاتورة مستخدم مسبقًا');
             return;
           }
@@ -2953,23 +2955,30 @@ window.addEventListener('load', function(){
           updatedAt: nowISO()
         };
 
-        db.supplyRequests.unshift(requestItem);
-        await updateDeviceStatus(device.id, 'await_parts');
-
-        if(APP_CONFIG.dataProvider === 'supabase' && isHydrated){
+        if(APP_CONFIG.dataProvider === 'supabase'){
           const serializedRequest = SupplyRequestsAPI.serialize(requestItem);
           const { error: insertError } = await supabaseClient
             .from(APP_CONFIG.supplyRequestsTable)
-            .upsert(serializedRequest, { onConflict: 'id' });
+            .insert(serializedRequest);
           if(insertError) throw insertError;
         }
 
-        saveDB();
-        await flushSaveDB();
+        db.supplyRequests.unshift(requestItem);
 
-        if(APP_CONFIG.dataProvider === 'supabase' && isHydrated){
-          db.supplyRequests = await SupplyRequestsAPI.getAll();
-          saveDB(true);
+        try {
+          await updateDeviceStatus(device.id, 'await_parts');
+        } catch(statusErr){
+          console.error('updateDeviceStatus after request insert failed:', statusErr);
+        }
+
+        saveDB(true);
+
+        if(APP_CONFIG.dataProvider === 'supabase'){
+          try {
+            db.supplyRequests = await SupplyRequestsAPI.getAll();
+          } catch(refreshErr){
+            console.error('refresh supply requests failed:', refreshErr);
+          }
         }
 
         buildNav();
@@ -2981,8 +2990,10 @@ window.addEventListener('load', function(){
         buildNav();
         alert('تم إنشاء الفاتورة وإرسالها إلى صفحة الشركة بنجاح');
       } catch(err){
-        console.error('createSupplyRequest error:', err);
-        alert('حدث خطأ أثناء إرسال الفاتورة إلى صفحة الشركة');
+        db.supplyRequests = prevRequests;
+        saveDB(true);
+        console.error('createSupplyRequest error details:', err);
+        alert('حدث خطأ أثناء إرسال الفاتورة إلى صفحة الشركة: ' + (err && (err.message || err.details || err.code) ? (err.message || err.details || err.code) : 'خطأ غير معروف'));
       } finally {
         if(submitBtn) submitBtn.disabled = false;
       }
