@@ -448,6 +448,7 @@
     ensureBarcodeValues();
     let currentUser = null;
     let currentSection = 'dashboard';
+    let dashboardSelectedDate = null;
 
     
     const MAINTENANCE_PHONE = "07742228831";
@@ -1692,6 +1693,11 @@ const deviceStatusMap = {
         .reduce((sum, d) => sum + Number(d.repairAmount || 0), 0);
     }
 
+    function getSelectedDateMaintenanceTotal(){
+      return getSelectedDateDeliveredDevices()
+        .reduce((sum, d) => sum + Number(d.repairAmount || 0), 0);
+    }
+
     function getDevicePartsCost(deviceId){
       const usedSlips = (db.partSlips || []).filter(slip =>
         slip.deviceId === deviceId &&
@@ -1709,8 +1715,17 @@ const deviceStatusMap = {
         .reduce((sum, d) => sum + getDevicePartsCost(d.id), 0);
     }
 
+    function getSelectedDateDeliveredDevicesPartsCost(){
+      return getSelectedDateDeliveredDevices()
+        .reduce((sum, d) => sum + getDevicePartsCost(d.id), 0);
+    }
+
     function getTodayProfit(){
       return getTodayMaintenanceTotal() - getDeliveredTodayDevicesPartsCost();
+    }
+
+    function getSelectedDateProfit(){
+      return getSelectedDateMaintenanceTotal() - getSelectedDateDeliveredDevicesPartsCost();
     }
 
     function getReceiptEditableDevices(){
@@ -1829,7 +1844,7 @@ const deviceStatusMap = {
     function getTodayDeliveredDevices(){
       const today = getIraqTodayDate();
       return db.devices.filter(d =>
-        d.status === 'delivered' &&
+        ['delivered', 'delivered_customer', 'delivered_company'].includes(d.status) &&
         isSameDayIso(d.deliveredAt, today)
       );
     }
@@ -1837,6 +1852,68 @@ const deviceStatusMap = {
     function getTodayCompletedDevices(){
       const today = getIraqTodayDate();
       return db.devices.filter(d => isSameDayIso(d.completedAt, today));
+    }
+
+    function getDashboardSelectedDate(){
+      if(dashboardSelectedDate) return dashboardSelectedDate;
+      dashboardSelectedDate = getIraqTodayDate();
+      return dashboardSelectedDate;
+    }
+
+    function setDashboardSelectedDate(dateStr){
+      dashboardSelectedDate = dateStr || getIraqTodayDate();
+      renderDashboard();
+    }
+
+    function shiftDashboardSelectedDate(days){
+      const current = new Date(getDashboardSelectedDate() + 'T00:00:00');
+      current.setDate(current.getDate() + Number(days || 0));
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      const d = String(current.getDate()).padStart(2, '0');
+      dashboardSelectedDate = `${y}-${m}-${d}`;
+      renderDashboard();
+    }
+
+    function formatDashboardSelectedDateLabel(dateStr){
+      if(!dateStr) return '—';
+      const d = new Date(dateStr + 'T00:00:00');
+      if(Number.isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('ar-IQ', {
+        year:'numeric',
+        month:'long',
+        day:'numeric',
+        weekday:'long'
+      });
+    }
+
+    function isDeviceOnSelectedDate(device, fieldName){
+      const selected = getDashboardSelectedDate();
+      return isSameDayIso(device?.[fieldName], selected);
+    }
+
+    function getSelectedDateReceivedDevices(){
+      return (db.devices || []).filter(d => isDeviceOnSelectedDate(d, 'createdAt'));
+    }
+
+    function getSelectedDateCompletedDevices(){
+      return (db.devices || []).filter(d =>
+        isDeviceOnSelectedDate(d, 'completedAt')
+      );
+    }
+
+    function getSelectedDateDeliveredDevices(){
+      return (db.devices || []).filter(d =>
+        ['delivered', 'delivered_customer', 'delivered_company'].includes(d.status) &&
+        isDeviceOnSelectedDate(d, 'deliveredAt')
+      );
+    }
+
+    function getSelectedDateNotRepairedDevices(){
+      return (db.devices || []).filter(d =>
+        d.status === 'not_repaired' &&
+        isDeviceOnSelectedDate(d, 'notRepairedAt')
+      );
     }
 
     function getPendingTechnicianSlips(){
@@ -1862,21 +1939,15 @@ const deviceStatusMap = {
       }, 120);
     }
 
-    function getCompletionUsedSlipNumbers(deviceId){
+    function getDeviceSupplyInvoiceNumbers(deviceId){
       if(!deviceId) return [];
 
-      const completion = (db.completions || []).find(c => c.deviceId === deviceId);
-      if(!completion) return [];
-
-      const partSlipIds = Array.isArray(completion.partSlipIds) ? completion.partSlipIds : [];
-
-      const usedSlipNumbers = partSlipIds
-        .map(id => (db.partSlips || []).find(p => p.id === id))
-        .filter(Boolean)
-        .map(p => String(p.receiptNumber || '').trim())
+      const invoiceNumbers = (db.supplyRequests || [])
+        .filter(req => req && req.deviceId === deviceId)
+        .map(req => String(req.salesInvoiceNumber || '').trim())
         .filter(Boolean);
 
-      return [...new Set(usedSlipNumbers)];
+      return [...new Set(invoiceNumbers)];
     }
 
     function renderQuickDevicesTable(title, items){
@@ -1892,11 +1963,13 @@ const deviceStatusMap = {
         `;
       }
 
-      const showUsedSlipNumbersColumn = title === 'الأجهزة المسلمة اليوم';
+      const showUsedSlipNumbersColumn =
+        title === 'الأجهزة المسلمة اليوم' ||
+        title === 'الأجهزة المسلمة في التاريخ المحدد';
 
       const rows = items.map(d => {
-        const usedSlipNumbers = showUsedSlipNumbersColumn ? getCompletionUsedSlipNumbers(d.id) : [];
-        const usedSlipNumbersText = usedSlipNumbers.length ? usedSlipNumbers.join(' - ') : '—';
+        const usedSlipNumbers = showUsedSlipNumbersColumn ? getDeviceSupplyInvoiceNumbers(d.id) : [];
+        const usedSlipNumbersText = usedSlipNumbers.length ? usedSlipNumbers.join(' - ') : 'بدون فواتير';
 
         return `
           <tr>
@@ -1923,7 +1996,7 @@ const deviceStatusMap = {
               <thead>
                 <tr>
                   <th>رقم الوصل</th>
-                  ${showUsedSlipNumbersColumn ? '<th>أرقام الوصولات المستخدمة</th>' : ''}
+                  ${showUsedSlipNumbersColumn ? '<th>أرقام فواتير طلبات التجهيز</th>' : ''}
                   <th>الزبون</th>
                   <th>الجهاز</th>
                   <th>الهاتف</th>
@@ -1992,11 +2065,13 @@ const deviceStatusMap = {
       let html = '';
 
       if(type === 'received_today'){
-        html = renderQuickDevicesTable('الأجهزة المستلمة اليوم', getTodayReceivedDevices());
+        html = renderQuickDevicesTable('الأجهزة المستلمة في التاريخ المحدد', getSelectedDateReceivedDevices());
       }else if(type === 'delivered_today'){
-        html = renderQuickDevicesTable('الأجهزة المسلمة اليوم', getTodayDeliveredDevices());
+        html = renderQuickDevicesTable('الأجهزة المسلمة في التاريخ المحدد', getSelectedDateDeliveredDevices());
       }else if(type === 'completed_today'){
-        html = renderQuickDevicesTable('الأجهزة المكتملة اليوم', getTodayCompletedDevices());
+        html = renderQuickDevicesTable('الأجهزة المكتملة في التاريخ المحدد', getSelectedDateCompletedDevices());
+      }else if(type === 'not_repaired_today'){
+        html = renderQuickDevicesTable('الأجهزة غير المصلحة في التاريخ المحدد', getSelectedDateNotRepairedDevices());
       }else if(type === 'overdue'){
         html = renderQuickDevicesTable('الأجهزة المتأخرة', getOverdueDevicesList());
       }else if(type === 'pending_parts'){
@@ -2144,28 +2219,30 @@ const deviceStatusMap = {
     }
 
     function renderDashboard(){
-      const today = getIraqTodayDate();
+      const selectedDate = getDashboardSelectedDate();
+      const selectedDateLabel = formatDashboardSelectedDateLabel(selectedDate);
       const now = new Date();
       const totalDevices = db.devices.length;
       const pendingSupply = db.supplyRequests.filter(x => x.status === 'pending').length;
       const pendingParts = db.partSlips.filter(x => x.status === 'pending').length;
       const activeMissingPartsCount = getActiveMissingPartsEntries().length;
-      const receivedToday = db.devices.filter(d => isSameDayIso(d.createdAt, today)).length;
-      const completedToday = db.devices.filter(d => isSameDayIso(d.completedAt, today)).length;
-      const deliveredToday = getTodayDeliveredDevices().length;
+      const receivedToday = getSelectedDateReceivedDevices().length;
+      const completedToday = getSelectedDateCompletedDevices().length;
+      const deliveredToday = getSelectedDateDeliveredDevices().length;
+      const notRepairedToday = getSelectedDateNotRepairedDevices().length;
       const overdueDevices = db.devices.filter(d => {
         if(!d.createdAt) return false;
         const ageDays = (now - new Date(d.createdAt)) / (1000 * 60 * 60 * 24);
         return ageDays >= 3 && !['complete', 'delivered', 'not_repaired'].includes(d.status);
       }).length;
-      const todayMaintenanceTotal = getTodayMaintenanceTotal();
-      const deliveredTodayDevicesPartsCost = getDeliveredTodayDevicesPartsCost();
-      const todayProfit = getTodayProfit();
+      const todayMaintenanceTotal = getSelectedDateMaintenanceTotal();
+      const deliveredTodayDevicesPartsCost = getSelectedDateDeliveredDevicesPartsCost();
+      const todayProfit = getSelectedDateProfit();
       const managerExtraStat = currentUser && currentUser.role === 'manager'
         ? `
-            <div class="stat"><div class="label">مجموع مبالغ صيانة الأجهزة المسلمة اليوم</div><div class="value">${formatMoneyIQD(todayMaintenanceTotal)}</div></div>
-            <div class="stat"><div class="label">كلفة قطع الأجهزة المسلمة اليوم</div><div class="value">${formatMoneyIQD(deliveredTodayDevicesPartsCost)}</div></div>
-            <div class="stat"><div class="label">أرباح الأجهزة المسلمة اليوم</div><div class="value">${formatMoneyIQD(todayProfit)}</div></div>
+            <div class="stat"><div class="label">مجموع مبالغ صيانة الأجهزة المسلمة في التاريخ المحدد</div><div class="value">${formatMoneyIQD(todayMaintenanceTotal)}</div></div>
+            <div class="stat"><div class="label">كلفة قطع الأجهزة المسلمة في التاريخ المحدد</div><div class="value">${formatMoneyIQD(deliveredTodayDevicesPartsCost)}</div></div>
+            <div class="stat"><div class="label">أرباح الأجهزة المسلمة في التاريخ المحدد</div><div class="value">${formatMoneyIQD(todayProfit)}</div></div>
           `
         : '';
 
@@ -2173,15 +2250,28 @@ const deviceStatusMap = {
         <div class="section-title">
           <div>
             <h2>لوحة التحكم</h2>
-            <p>ملخص سريع لحالة النظام</p>
+            <p>ملخص سريع لحالة النظام حسب التاريخ المحدد</p>
           </div>
+        </div>
+        <div class="quick-list" style="margin-top:0">
+          <div class="close-row" style="flex-wrap:wrap">
+            <h3>تاريخ لوحة التحكم</h3>
+            <div class="actions">
+              <button type="button" class="small secondary" onclick="shiftDashboardSelectedDate(-1)">اليوم السابق</button>
+              <input type="date" value="${selectedDate}" onchange="setDashboardSelectedDate(this.value)" style="min-width:170px" />
+              <button type="button" class="small secondary" onclick="shiftDashboardSelectedDate(1)">اليوم التالي</button>
+              <button type="button" class="small info" onclick="setDashboardSelectedDate(getIraqTodayDate())">اليوم</button>
+            </div>
+          </div>
+          <div class="hint">التاريخ المختار: ${escapeHtml(selectedDateLabel)}</div>
         </div>
         ${renderSmartAlerts()}
         <div class="stats">
           <div class="stat"><div class="label">إجمالي الأجهزة</div><div class="value">${totalDevices}</div></div>
-          <div class="stat clickable" onclick="openDashboardQuickList('received_today')"><div class="label">استلام اليوم</div><div class="value">${receivedToday}</div></div>
-          <div class="stat clickable" onclick="openDashboardQuickList('completed_today')"><div class="label">مكتمل اليوم</div><div class="value">${completedToday}</div></div>
-          <div class="stat clickable" onclick="openDashboardQuickList('delivered_today')"><div class="label">تم التسليم اليوم</div><div class="value">${deliveredToday}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('received_today')"><div class="label">استلام هذا اليوم</div><div class="value">${receivedToday}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('completed_today')"><div class="label">مكتمل هذا اليوم</div><div class="value">${completedToday}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('delivered_today')"><div class="label">تم التسليم في هذا اليوم</div><div class="value">${deliveredToday}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('not_repaired_today')"><div class="label">لم يتم التصليح في هذا اليوم</div><div class="value">${notRepairedToday}</div></div>
           <div class="stat clickable" onclick="openDashboardQuickList('overdue')"><div class="label">الأجهزة المتأخرة</div><div class="value">${overdueDevices}</div></div>
           <div class="stat"><div class="label">طلبات تجهيز بانتظار الشركة</div><div class="value">${pendingSupply}</div></div>
           <div class="stat clickable" onclick="openDashboardQuickList('pending_parts')"><div class="label">وصولات معلقة عند الفني</div><div class="value">${pendingParts}</div></div>
