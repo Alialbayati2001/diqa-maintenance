@@ -440,6 +440,7 @@
       supplyRequests: [],
       partSlips: [],
       completions: [],
+      deviceMissingParts: {},
       counters: { receipt: 1 }
     };
 
@@ -534,8 +535,32 @@ const APP_CONFIG = {
     function getRemoteMetaPayload(){
       return {
         users: Array.isArray(db.users) && db.users.length ? db.users : structuredClone(DEFAULT_DB.users),
+        deviceMissingParts: sanitizeMissingPartsMap(db.deviceMissingParts || {}),
         counters: db.counters || { receipt: 1 }
       };
+    }
+
+    function normalizeMissingPartEntry(entry){
+      const safe = entry && typeof entry === 'object' ? entry : {};
+      const textValue = String(safe.text || '').trim();
+      if(!textValue) return null;
+      return {
+        text: textValue,
+        updatedAt: safe.updatedAt || null,
+        updatedBy: String(safe.updatedBy || '').trim(),
+        receiptNumber: String(safe.receiptNumber || '').trim(),
+        customerName: String(safe.customerName || '').trim(),
+        deviceType: String(safe.deviceType || '').trim()
+      };
+    }
+
+    function sanitizeMissingPartsMap(value){
+      const safe = value && typeof value === 'object' ? value : {};
+      return Object.fromEntries(
+        Object.entries(safe)
+          .map(([deviceId, entry]) => [String(deviceId || '').trim(), normalizeMissingPartEntry(entry)])
+          .filter(([deviceId, entry]) => deviceId && entry)
+      );
     }
 
     function sanitizeRemoteMetaPayload(payload){
@@ -554,6 +579,7 @@ const APP_CONFIG = {
         : [];
       return {
         users: safeUsers.length ? safeUsers : structuredClone(DEFAULT_DB.users),
+        deviceMissingParts: sanitizeMissingPartsMap(safe.deviceMissingParts || {}),
         counters: safe.counters && typeof safe.counters === 'object' ? safe.counters : { receipt: 1 }
       };
     }
@@ -990,6 +1016,7 @@ const APP_CONFIG = {
           const stateRow = await AppStateAPI.get();
           const payload = sanitizeRemoteMetaPayload(stateRow?.payload || {});
           db.users = payload.users || structuredClone(DEFAULT_DB.users);
+          db.deviceMissingParts = sanitizeMissingPartsMap(payload.deviceMissingParts || {});
           db.counters = { ...(db.counters || {}), ...(payload.counters || {}) };
           saveDB(true);
           if(currentUser) renderAll();
@@ -1109,6 +1136,7 @@ const APP_CONFIG = {
           ...structuredClone(DEFAULT_DB),
           ...db,
           users: remoteMeta.users || structuredClone(DEFAULT_DB.users),
+          deviceMissingParts: sanitizeMissingPartsMap(remoteMeta.deviceMissingParts || {}),
           devices,
           supplyRequests,
           partSlips,
@@ -1542,7 +1570,8 @@ const deviceStatusMap = {
       };
       const companyPendingRequestsCount = db.supplyRequests.filter(r => r.status === 'pending').length;
       const companyDeliveryCount = db.devices.filter(d => d.status === 'delivered_company').length;
-      const companyPendingCount = companyPendingRequestsCount + companyDeliveryCount;
+      const companyMissingPartsCount = Object.keys(sanitizeMissingPartsMap(db.deviceMissingParts || {})).length;
+      const companyPendingCount = companyPendingRequestsCount + companyDeliveryCount + companyMissingPartsCount;
       const html = allowedSections().map(key => {
         let label = items[key];
         if(key === 'company' && companyPendingCount > 0){
@@ -1946,6 +1975,8 @@ const deviceStatusMap = {
         html = renderQuickDevicesTable('الأجهزة المتأخرة', getOverdueDevicesList());
       }else if(type === 'pending_parts'){
         html = renderQuickPartSlipsTable('الوصولات المعلقة عند الفني', getPendingTechnicianSlips());
+      }else if(type === 'missing_parts'){
+        html = renderQuickMissingPartsTable('كل نواقص قطع الغيار المطلوبة من الصيانة', true);
       }
 
       const box = document.getElementById('dashboardQuickList');
@@ -1953,6 +1984,54 @@ const deviceStatusMap = {
         box.innerHTML = html;
         box.scrollIntoView({ behavior:'smooth', block:'start' });
       }
+    }
+
+    function canManageMissingParts(){
+      return !!(currentUser && ['manager','company'].includes(currentUser.role));
+    }
+
+    function renderQuickMissingPartsTable(title, includeCloseButton=false){
+      const items = getActiveMissingPartsEntries();
+      return `
+        <div class="quick-list">
+          <div class="close-row">
+            <h3>${escapeHtml(title || 'نواقص قطع الغيار')}</h3>
+            ${includeCloseButton ? '<button class="small danger" onclick="closeDashboardQuickList()">إغلاق</button>' : ''}
+          </div>
+          <div class="table-wrap" style="max-height:none">
+            <table>
+              <thead>
+                <tr>
+                  <th>رقم الوصل</th>
+                  <th>الزبون</th>
+                  <th>الجهاز</th>
+                  <th>النواقص المطلوبة</th>
+                  <th>مضاف بواسطة</th>
+                  <th>آخر تحديث</th>
+                  <th>إجراء</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map(({ device, entry }) => `
+                  <tr>
+                    <td>${escapeHtml(device.receiptNumber || entry.receiptNumber || '—')}</td>
+                    <td>${escapeHtml(device.customerName || entry.customerName || '—')}</td>
+                    <td>${escapeHtml(device.deviceType || entry.deviceType || '—')}</td>
+                    <td>${escapeHtml(entry.text || '—')}</td>
+                    <td>${escapeHtml(entry.updatedBy || '—')}</td>
+                    <td>${formatDateTime(entry.updatedAt)}</td>
+                    <td>
+                      <div class="actions">
+                        ${canManageMissingParts() ? `<button class="small danger" onclick="clearDeviceMissingParts('${device.id}')">حذف</button>` : '<span class="muted">عرض فقط</span>'}
+                      </div>
+                    </td>
+                  </tr>
+                `).join('') || `<tr><td colspan="7" class="muted">لا توجد نواقص قطع غيار حالياً</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
     }
 
 
@@ -2044,6 +2123,7 @@ const deviceStatusMap = {
       const totalDevices = db.devices.length;
       const pendingSupply = db.supplyRequests.filter(x => x.status === 'pending').length;
       const pendingParts = db.partSlips.filter(x => x.status === 'pending').length;
+      const activeMissingPartsCount = getActiveMissingPartsEntries().length;
       const receivedToday = db.devices.filter(d => isSameDayIso(d.createdAt, today)).length;
       const completedToday = db.devices.filter(d => isSameDayIso(d.completedAt, today)).length;
       const deliveredToday = getTodayDeliveredDevices().length;
@@ -2079,8 +2159,10 @@ const deviceStatusMap = {
           <div class="stat clickable" onclick="openDashboardQuickList('overdue')"><div class="label">الأجهزة المتأخرة</div><div class="value">${overdueDevices}</div></div>
           <div class="stat"><div class="label">طلبات تجهيز بانتظار الشركة</div><div class="value">${pendingSupply}</div></div>
           <div class="stat clickable" onclick="openDashboardQuickList('pending_parts')"><div class="label">وصولات معلقة عند الفني</div><div class="value">${pendingParts}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('missing_parts')"><div class="label">نواقص قطع الغيار المطلوبة</div><div class="value">${activeMissingPartsCount}</div></div>
           ${managerExtraStat}
         </div>
+        ${renderQuickMissingPartsTable('نواقص قطع الغيار المطلوبة من الصيانة')}
         <div id="dashboardQuickList"></div>
       `;
     }
@@ -2378,6 +2460,59 @@ function renderShopReceive(){
       if(statusEl) statusEl.value = 'received';
     }
 
+
+    function getDeviceMissingPartEntry(deviceId){
+      return normalizeMissingPartEntry((db.deviceMissingParts || {})[deviceId]) || null;
+    }
+
+    function getActiveMissingPartsEntries(){
+      return (db.devices || [])
+        .map(device => {
+          const entry = getDeviceMissingPartEntry(device.id);
+          if(!entry) return null;
+          return { device, entry };
+        })
+        .filter(Boolean)
+        .sort((a, b) => new Date(b.entry.updatedAt || 0) - new Date(a.entry.updatedAt || 0));
+    }
+
+    async function editDeviceMissingParts(deviceId){
+      const device = (db.devices || []).find(d => d.id === deviceId);
+      if(!device) return;
+      const currentEntry = getDeviceMissingPartEntry(deviceId);
+      const value = prompt(`اكتب نواقص قطع الغيار المطلوبة لهذا الجهاز.
+اترك الحقل فارغاً لمسحها.`, currentEntry ? currentEntry.text : '');
+      if(value === null) return;
+      const clean = String(value || '').trim();
+      db.deviceMissingParts = sanitizeMissingPartsMap(db.deviceMissingParts || {});
+      if(clean){
+        db.deviceMissingParts[deviceId] = {
+          text: clean,
+          updatedAt: nowISO(),
+          updatedBy: currentUser ? currentUser.fullName : '—',
+          receiptNumber: device.receiptNumber || '',
+          customerName: device.customerName || '',
+          deviceType: device.deviceType || ''
+        };
+      } else {
+        delete db.deviceMissingParts[deviceId];
+      }
+      saveDB();
+      renderAll();
+      alert(clean ? 'تم حفظ نواقص قطع الغيار' : 'تم مسح نواقص قطع الغيار');
+    }
+
+    async function clearDeviceMissingParts(deviceId){
+      const device = (db.devices || []).find(d => d.id === deviceId);
+      if(!device) return;
+      if(!confirm(`هل تريد حذف نواقص قطع الغيار للجهاز رقم ${device.receiptNumber || '—'}؟`)) return;
+      db.deviceMissingParts = sanitizeMissingPartsMap(db.deviceMissingParts || {});
+      delete db.deviceMissingParts[deviceId];
+      saveDB();
+      renderAll();
+      alert('تم حذف نواقص قطع الغيار');
+    }
+
 function renderDevices(){
       const section = document.getElementById('devicesSection');
       if(!section) return;
@@ -2463,6 +2598,7 @@ function renderDevices(){
           <td>${escapeHtml(d.deviceColor || '—')}</td>
           <td>${escapeHtml(d.phone)}</td>
           <td>${badge(deviceStatusMap, d.status)}</td>
+          <td>${escapeHtml(getDeviceMissingPartEntry(d.id)?.text || '—')}</td>
           <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
           <td>${escapeHtml(d.receivedBy || '—')}</td>
           <td>${escapeHtml(d.receiveDate || '—')}<br><span class="muted">${escapeHtml(d.receiveTime || '')}</span></td>
@@ -2472,6 +2608,7 @@ function renderDevices(){
             <div class="actions">
               <button class="small secondary" onclick="showDeviceSummaryByReceipt('${escapeJs(d.receiptNumber || '')}')">حالة الجهاز</button>
               ${(currentUser && ['technician','manager'].includes(currentUser.role)) ? `
+                <button class="small secondary" onclick="editDeviceMissingParts('${d.id}')">نواقص قطع الغيار</button>
                 <button class="small info" onclick="setDeviceStatus('${d.id}','await_approval')">انتظار موافقة</button>
                 <button class="small warning" onclick="setDeviceStatus('${d.id}','await_parts')">انتظار قطع</button>
                 <button class="small danger" onclick="markDeviceNotRepaired('${d.id}')">لم يتم التصليح</button>
@@ -2528,6 +2665,7 @@ function renderDevices(){
                 <th>اللون</th>
                 <th>الهاتف</th>
                 <th>الحالة</th>
+                <th>نواقص قطع الغيار</th>
                 <th>المبلغ</th>
                 <th>الموظف</th>
                 <th>التاريخ</th>
@@ -2536,7 +2674,7 @@ function renderDevices(){
                 <th>إجراءات</th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="12" class="muted">لا توجد بيانات مطابقة للفلتر الحالي</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="13" class="muted">لا توجد بيانات مطابقة للفلتر الحالي</td></tr>`}</tbody>
           </table>
         </div>
       `;
@@ -3246,6 +3384,22 @@ window.addEventListener('load', function(){
         .map(normalizeCompanyRequestRow)
         .filter(Boolean)
         .sort((a, b) => String(b.id || '').localeCompare(String(a.id || '')));
+      const missingPartsRows = getActiveMissingPartsEntries().map(({ device, entry }) => `
+        <tr>
+          <td>${escapeHtml(device.receiptNumber || entry.receiptNumber || '—')}</td>
+          <td>${escapeHtml(device.customerName || entry.customerName || '—')}</td>
+          <td>${escapeHtml(device.deviceType || entry.deviceType || '—')}</td>
+          <td>${escapeHtml(entry.text || '—')}</td>
+          <td>${escapeHtml(entry.updatedBy || '—')}</td>
+          <td>${formatDateTime(entry.updatedAt)}</td>
+          <td>
+            <div class="actions">
+              ${currentUser && ['technician','manager','company'].includes(currentUser.role) ? `<button class="small secondary" onclick="editDeviceMissingParts('${device.id}')">تعديل</button>` : ''}
+              ${canManageMissingParts() ? `<button class="small danger" onclick="clearDeviceMissingParts('${device.id}')">حذف</button>` : '<span class="muted">عرض فقط</span>'}
+            </div>
+          </td>
+        </tr>
+      `).join('');
 
       console.log('company requests render:', companyRequests);
 
@@ -3308,6 +3462,31 @@ window.addEventListener('load', function(){
               </tr>
             </thead>
             <tbody>${rows || `<tr><td colspan="10" class="muted">لا توجد طلبات واردة</td></tr>`}</tbody>
+          </table>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <div class="section-title">
+          <div>
+            <h2>نواقص قطع الغيار المطلوبة من الصيانة</h2>
+            <p>تظهر هنا الطلبات التي يكتبها فني الصيانة على الأجهزة مباشرة</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>رقم الوصل</th>
+                <th>الزبون</th>
+                <th>الجهاز</th>
+                <th>النواقص المطلوبة</th>
+                <th>مضاف بواسطة</th>
+                <th>آخر تحديث</th>
+                <th>إجراء</th>
+              </tr>
+            </thead>
+            <tbody>${missingPartsRows || `<tr><td colspan="7" class="muted">لا توجد نواقص قطع غيار حالياً</td></tr>`}</tbody>
           </table>
         </div>
 
