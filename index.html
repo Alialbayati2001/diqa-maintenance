@@ -1140,14 +1140,14 @@ const APP_CONFIG = {
 
     async function setDeviceStatus(deviceId, status){
       await updateDeviceStatus(deviceId, status);
-      renderAll();
+      await renderAll();
     }
 
     async function setDeviceDelivered(deviceId){
       await updateDeviceStatus(deviceId, 'delivered', {
         deliveredBy: currentUser ? currentUser.fullName : '—'
       });
-      renderAll();
+      await renderAll();
     }
 
     async function markDeviceNotRepaired(deviceId){
@@ -1156,7 +1156,7 @@ const APP_CONFIG = {
       await updateDeviceStatus(deviceId, 'not_repaired', {
         notRepairReason: String(reason || '').trim()
       });
-      renderAll();
+      await renderAll();
     }
 
     function renderPublicDevice(device){
@@ -1458,7 +1458,7 @@ const deviceStatusMap = {
       document.getElementById('appView').classList.remove('hidden');
       document.getElementById('whoami').textContent = `${user.fullName} — ${roleLabel(user.role)}`;
       buildNav();
-      renderAll();
+      await renderAll();
       subscribeAdminDevicesRealtime();
       subscribeAppStateRealtime();
       subscribeArrayTablesRealtime();
@@ -1536,15 +1536,15 @@ const deviceStatusMap = {
       document.querySelectorAll('.nav button').forEach(btn => btn.classList.remove('active'));
       const navBtn = document.getElementById('nav_' + section);
       if(navBtn) navBtn.classList.add('active');
-      renderAll();
+      await renderAll();
     }
 
-    function renderAll(){
+    async function renderAll(){
       renderDashboard();
       renderShopReceive();
       renderDevices();
       renderSupplyRequests();
-      renderCompany();
+      await renderCompany();
       renderTechnician();
       renderCompletion();
       renderDelivery();
@@ -1687,7 +1687,7 @@ const deviceStatusMap = {
         if(editingReceiptId === deviceId) editingReceiptId = null;
         saveDB(true);
         buildNav();
-        renderAll();
+        await renderAll();
         alert('تم حذف الجهاز بنجاح');
       }catch(err){
         console.error('deleteDeviceCascade failed:', err);
@@ -2189,7 +2189,7 @@ function renderShopReceive(){
         editingReceiptId = null;
         alert('تم تحديث وصل الاستلام بنجاح');
         e.target.reset();
-        renderAll();
+        await renderAll();
         openSection('shopReceive');
         return;
       }
@@ -2227,7 +2227,7 @@ function renderShopReceive(){
       saveDB();
       alert('تم حفظ استلام الجهاز وإرساله للصيانة');
       e.target.reset();
-      renderAll();
+      await renderAll();
       openSection('devices');
     }
 
@@ -2287,7 +2287,7 @@ function renderShopReceive(){
       db.counters.receipt = Math.max(Number(db.counters.receipt) || 1, serialGuess + 1);
       await DevicesAPI.upsert(device);
       saveDB();
-      renderAll();
+      await renderAll();
       alert('تمت إضافة الجهاز القديم بنجاح');
 
       ['legacyReceiptNumber','legacyCustomerName','legacyPhone','legacyDeviceType','legacyDeviceColor','legacyRepairAmount','legacyCreatedAt','legacyFaultDescription'].forEach(id => {
@@ -2913,7 +2913,7 @@ window.addEventListener('load', function(){
       notifyCompanyRequestsIfNeeded();
       alert('تم إنشاء الفاتورة وإرسالها إلى الشركة');
       e.target.reset();
-      renderAll();
+      await renderAll();
       buildNav();
     }
 
@@ -3013,11 +3013,12 @@ window.addEventListener('load', function(){
       req.status = status;
       req.companyHandledBy = currentUser?.fullName || '';
       req.updatedAt = new Date().toISOString();
+
       try{
         await persistAllData();
-        await hydrateFromSupabase(true);
+        db.supplyRequests = await SupplyRequestsAPI.getAll();
         buildNav();
-        renderAll();
+        await renderAll();
       }catch(err){
         console.error(err);
         alert('تعذر تحديث حالة الطلب');
@@ -3314,7 +3315,7 @@ window.addEventListener('load', function(){
       buildNav();
       alert('تم اعتماد إتمام الجهاز بنجاح');
       e.target.reset();
-      renderAll();
+      await renderAll();
       buildNav();
       openSection('devices');
     }
@@ -3329,7 +3330,7 @@ window.addEventListener('load', function(){
       part.returnRequestedBy = currentUser ? currentUser.fullName : '—';
       part.updatedAt = nowISO();
       saveDB();
-      renderAll();
+      await renderAll();
     }
 
     function renderReturns(){
@@ -3389,7 +3390,7 @@ window.addEventListener('load', function(){
       part.returnHandledAt = nowISO();
       part.updatedAt = nowISO();
       saveDB();
-      renderAll();
+      await renderAll();
     }
 
     function renderDelivery(){
@@ -3456,7 +3457,7 @@ window.addEventListener('load', function(){
         db.partSlips.push({id:uid('ps'),requestId:r2.id,salesInvoiceNumber:r2.salesInvoiceNumber,deviceId:d1.id,receiptNumber:'1001',customerName:'علي فاضل',partDescription:'بطارية',notes:'بطارية أصلية',status:'pending',preparedBy:'موظف الشركة',createdAt:nowISO(),updatedAt:nowISO(),usedInCompletionId:null,returnReason:'',returnRequestedBy:null,returnHandledBy:null,returnHandledAt:null});
       }
       saveDB();
-      renderAll();
+      await renderAll();
       alert('تمت إضافة بيانات تجريبية');
     }
 
@@ -3474,7 +3475,7 @@ window.addEventListener('load', function(){
         await hydrateFromSupabase();
         const isPublic = await bootPublic();
         if(isPublic) return;
-        renderAll();
+        await renderAll();
         window.addEventListener('beforeunload', () => {
           flushSaveDB().catch(() => {});
           unsubscribeAdminDevicesRealtime();
