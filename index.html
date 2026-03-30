@@ -1476,6 +1476,10 @@ const deviceStatusMap = {
 
     async function login(){
       if(!isHydrated) await hydrateFromSupabase();
+      if(APP_CONFIG.dataProvider === 'supabase'){
+        await refreshDevicesFromSupabase();
+        await refreshArrayTablesFromSupabase();
+      }
       const username = document.getElementById('loginUsername').value.trim();
       const password = document.getElementById('loginPassword').value.trim();
       const user = db.users.find(u => u.username === username && u.password === password);
@@ -1562,10 +1566,25 @@ const deviceStatusMap = {
       }
     }
 
+    async function refreshDevicesFromSupabase(){
+      if(APP_CONFIG.dataProvider !== 'supabase') return;
+      try {
+        const devices = await DevicesAPI.getAll();
+        db.devices = Array.isArray(devices) ? devices : [];
+        ensureBarcodeValues();
+        saveDB(true);
+      } catch (err) {
+        console.error('refreshDevicesFromSupabase failed:', err);
+      }
+    }
+
     async function openSection(section){
       currentSection = section;
-      if(section === 'company' || section === 'supplyRequests' || section === 'technician'){
-        await refreshArrayTablesFromSupabase();
+      if(APP_CONFIG.dataProvider === 'supabase') {
+        await refreshDevicesFromSupabase();
+        if(section === 'company' || section === 'supplyRequests' || section === 'technician' || section === 'completion' || section === 'returns'){
+          await refreshArrayTablesFromSupabase();
+        }
       }
       document.querySelectorAll('.section-page').forEach(el => el.classList.add('hidden'));
       const map = {
@@ -1735,6 +1754,10 @@ const deviceStatusMap = {
         db.partSlips = db.partSlips.filter(x => x.deviceId !== deviceId);
         db.completions = db.completions.filter(x => x.deviceId !== deviceId);
         db.devices = db.devices.filter(x => x.id !== deviceId);
+        if(APP_CONFIG.dataProvider === 'supabase'){
+          await refreshDevicesFromSupabase();
+          await refreshArrayTablesFromSupabase();
+        }
         if(editingReceiptId === deviceId) editingReceiptId = null;
         saveDB(true);
         buildNav();
@@ -2236,6 +2259,7 @@ function renderShopReceive(){
         current.updatedAt = nowISO();
         current.barcodeValue = current.barcodeValue || buildBarcodeValue(current.receiptNumber);
         await DevicesAPI.upsert(current);
+        await refreshDevicesFromSupabase();
         saveDB();
         editingReceiptId = null;
         alert('تم تحديث وصل الاستلام بنجاح');
@@ -2275,6 +2299,7 @@ function renderShopReceive(){
         notRepairReason: ''
       });
       await DevicesAPI.upsert(db.devices[0]);
+      await refreshDevicesFromSupabase();
       saveDB();
       alert('تم حفظ استلام الجهاز وإرساله للصيانة');
       e.target.reset();
@@ -3643,9 +3668,22 @@ window.addEventListener('load', function(){
     document.addEventListener('DOMContentLoaded', async () => {
       try{
         await hydrateFromSupabase();
+        await refreshDevicesFromSupabase();
+        await refreshArrayTablesFromSupabase();
         const isPublic = await bootPublic();
         if(isPublic) return;
         renderAll();
+        window.addEventListener('focus', async () => {
+          await refreshDevicesFromSupabase();
+          await refreshArrayTablesFromSupabase();
+          if(currentUser) renderAll();
+        });
+        document.addEventListener('visibilitychange', async () => {
+          if(document.visibilityState !== 'visible') return;
+          await refreshDevicesFromSupabase();
+          await refreshArrayTablesFromSupabase();
+          if(currentUser) renderAll();
+        });
         window.addEventListener('beforeunload', () => {
           flushSaveDB().catch(() => {});
           unsubscribeAdminDevicesRealtime();
