@@ -1517,8 +1517,28 @@ const deviceStatusMap = {
       document.getElementById('navButtons').innerHTML = html;
     }
 
-    function openSection(section){
+    async function refreshArrayTablesFromSupabase(){
+      if(APP_CONFIG.dataProvider !== 'supabase') return;
+      try {
+        const [supplyRequests, partSlips, completions] = await Promise.all([
+          SupplyRequestsAPI.getAll(),
+          PartSlipsAPI.getAll(),
+          CompletionsAPI.getAll()
+        ]);
+        db.supplyRequests = Array.isArray(supplyRequests) ? supplyRequests : [];
+        db.partSlips = Array.isArray(partSlips) ? partSlips : [];
+        db.completions = Array.isArray(completions) ? completions : [];
+        saveDB(true);
+      } catch (err) {
+        console.error('refreshArrayTablesFromSupabase failed:', err);
+      }
+    }
+
+    async function openSection(section){
       currentSection = section;
+      if(section === 'company' || section === 'supplyRequests' || section === 'technician'){
+        await refreshArrayTablesFromSupabase();
+      }
       document.querySelectorAll('.section-page').forEach(el => el.classList.add('hidden'));
       const map = {
         dashboard:'dashboardSection',
@@ -2968,13 +2988,36 @@ window.addEventListener('load', function(){
       }
     }
 
+    function normalizeCompanyRequestRow(r){
+      if(!r || typeof r !== 'object') return null;
+      return {
+        id: String(r.id || ''),
+        salesInvoiceNumber: r.salesInvoiceNumber || r.requestNumber || '—',
+        salesInvoiceAmount: Number(r.salesInvoiceAmount || 0),
+        receiptNumber: r.receiptNumber || r.receipt_number_snapshot || '—',
+        customerName: r.customerName || r.customer_name_snapshot || '—',
+        partDescription: r.partDescription || r.requested_part || '—',
+        notes: r.notes || '—',
+        status: r.status || 'pending',
+        sentBy: r.sentBy || r.requested_by || '—',
+        companyHandledBy: r.companyHandledBy || r.company_handled_by || '—'
+      };
+    }
+
     function renderCompany(){
-      const rows = db.supplyRequests.map(r => `
+      const companyRequests = (Array.isArray(db.supplyRequests) ? db.supplyRequests : [])
+        .map(normalizeCompanyRequestRow)
+        .filter(Boolean)
+        .sort((a, b) => String(b.id || '').localeCompare(String(a.id || '')));
+
+      console.log('company requests render:', companyRequests);
+
+      const rows = companyRequests.map(r => `
         <tr>
           <td>${escapeHtml(r.salesInvoiceNumber || '—')}</td>
           <td>${formatCurrency(r.salesInvoiceAmount || 0)}</td>
-          <td>${escapeHtml(r.receiptNumber)}</td>
-          <td>${escapeHtml(r.customerName)}</td>
+          <td>${escapeHtml(r.receiptNumber || '—')}</td>
+          <td>${escapeHtml(r.customerName || '—')}</td>
           <td>${escapeHtml(r.partDescription || '—')}</td>
           <td>${escapeHtml(r.notes || '—')}</td>
           <td>${badge(supplyStatusMap, r.status)}</td>
