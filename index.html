@@ -794,6 +794,7 @@ const APP_CONFIG = {
         return {
           id: row.id,
           salesInvoiceNumber: row.request_number || '',
+          salesInvoiceAmount: Number(row.sales_invoice_amount || 0),
           deviceId: row.device_id,
           receiptNumber: row.receipt_number_snapshot || '',
           customerName: row.customer_name_snapshot || '',
@@ -811,6 +812,7 @@ const APP_CONFIG = {
           id: item.id,
           device_id: item.deviceId,
           request_number: item.salesInvoiceNumber || null,
+          sales_invoice_amount: Number(item.salesInvoiceAmount || 0),
           requested_part: item.partDescription || '',
           notes: item.notes || '',
           status: item.status || 'pending',
@@ -2616,6 +2618,7 @@ window.addEventListener('load', function(){
       const rows = db.supplyRequests.map(r => `
         <tr>
           <td>${escapeHtml(r.salesInvoiceNumber || '—')}</td>
+          <td>${formatCurrency(r.salesInvoiceAmount || 0)}</td>
           <td>${escapeHtml(r.receiptNumber)}</td>
           <td>${escapeHtml(r.customerName)}</td>
           <td>${escapeHtml(r.partDescription || '—')}</td>
@@ -2652,6 +2655,10 @@ window.addEventListener('load', function(){
             <input id="salesInvoiceNumber" required />
           </div>
           <div>
+            <label>مبلغ الفاتورة</label>
+            <input id="salesInvoiceAmount" type="number" min="0" step="250" required />
+          </div>
+          <div>
             <label>القطعة أو الطلب المطلوب</label>
             <input id="partDescription" required />
           </div>
@@ -2667,6 +2674,7 @@ window.addEventListener('load', function(){
             <thead>
               <tr>
                 <th>رقم الفاتورة</th>
+                <th>مبلغ الفاتورة</th>
                 <th>مرجع الاستلام</th>
                 <th>الزبون</th>
                 <th>المطلوب</th>
@@ -2676,7 +2684,7 @@ window.addEventListener('load', function(){
                 <th>الوقت</th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="8" class="muted">لا توجد طلبات تجهيز</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="9" class="muted">لا توجد طلبات تجهيز</td></tr>`}</tbody>
           </table>
         </div>
         ${currentUser && currentUser.role === 'manager' ? `
@@ -2742,6 +2750,7 @@ window.addEventListener('load', function(){
       const device = db.devices.find(d => d.id === deviceId);
       if(!device){ alert('اختر جهازًا صحيحًا'); return; }
       const salesInvoiceNumber = document.getElementById('salesInvoiceNumber').value.trim();
+      const salesInvoiceAmount = Number(document.getElementById('salesInvoiceAmount').value || 0);
       if(db.supplyRequests.some(r => r.salesInvoiceNumber === salesInvoiceNumber)){
         alert('رقم الفاتورة مستخدم مسبقًا');
         return;
@@ -2749,6 +2758,7 @@ window.addEventListener('load', function(){
       db.supplyRequests.unshift({
         id: uid('req'),
         salesInvoiceNumber,
+        salesInvoiceAmount,
         deviceId: device.id,
         receiptNumber: device.receiptNumber,
         customerName: device.customerName,
@@ -2774,6 +2784,7 @@ window.addEventListener('load', function(){
       const rows = db.supplyRequests.map(r => `
         <tr>
           <td>${escapeHtml(r.salesInvoiceNumber || '—')}</td>
+          <td>${formatCurrency(r.salesInvoiceAmount || 0)}</td>
           <td>${escapeHtml(r.receiptNumber)}</td>
           <td>${escapeHtml(r.customerName)}</td>
           <td>${escapeHtml(r.partDescription || '—')}</td>
@@ -2817,6 +2828,7 @@ window.addEventListener('load', function(){
             <thead>
               <tr>
                 <th>رقم الفاتورة</th>
+                <th>مبلغ الفاتورة</th>
                 <th>مرجع الاستلام</th>
                 <th>الزبون</th>
                 <th>المطلوب</th>
@@ -2827,7 +2839,7 @@ window.addEventListener('load', function(){
                 <th>إجراء</th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="9" class="muted">لا توجد طلبات واردة</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="10" class="muted">لا توجد طلبات واردة</td></tr>`}</tbody>
           </table>
         </div>
 
@@ -2870,6 +2882,7 @@ window.addEventListener('load', function(){
           id: uid('ps'),
           requestId: r.id,
           salesInvoiceNumber: r.salesInvoiceNumber,
+          salesInvoiceAmount: r.salesInvoiceAmount || 0,
           deviceId: r.deviceId,
           receiptNumber: r.receiptNumber,
           customerName: r.customerName,
@@ -3317,10 +3330,10 @@ window.addEventListener('load', function(){
         const d1 = {id:uid('dev'),receiptNumber:'1001',barcodeValue:buildBarcodeValue('1001'),customerName:'علي فاضل',phone:'07700000001',deviceType:'موبايل سامسونج',faultDescription:'لا يشحن',accessories:'شاحن',repairAmount:15000,receiveDate:'2026-03-27',receiveTime:'10:30',receivedBy:'موظف المحل',status:'await_parts',createdAt:nowISO(),updatedAt:nowISO(),deliveredAt:null,deliveredBy:null};
         const d2 = {id:uid('dev'),receiptNumber:'1002',barcodeValue:buildBarcodeValue('1002'),customerName:'محمد كريم',phone:'07700000002',deviceType:'لابتوب',faultDescription:'كسر شاشة',accessories:'شنطة',repairAmount:35000,receiveDate:'2026-03-27',receiveTime:'11:00',receivedBy:'موظف المحل',status:'complete',createdAt:nowISO(),updatedAt:nowISO(),deliveredAt:null,deliveredBy:null};
         db.devices.push(d1,d2);
-        const r1 = {id:uid('req'),deviceId:d1.id,receiptNumber:'1001',customerName:'علي فاضل',partDescription:'منفذ شحن',notes:'مطلوب سريع',status:'prepared',sentBy:'موظف المحل',companyHandledBy:'موظف الشركة',createdAt:nowISO(),updatedAt:nowISO()};
+        const r1 = {id:uid('req'),salesInvoiceNumber:'INV-1001-A',salesInvoiceAmount:25000,deviceId:d1.id,receiptNumber:'1001',customerName:'علي فاضل',partDescription:'منفذ شحن',notes:'مطلوب سريع',status:'prepared',sentBy:'موظف المحل',companyHandledBy:'موظف الشركة',createdAt:nowISO(),updatedAt:nowISO()};
         db.supplyRequests.push(r1);
         db.partSlips.push({id:uid('ps'),requestId:r1.id,salesInvoiceNumber:r1.salesInvoiceNumber || 'INV-1001-A',deviceId:d1.id,receiptNumber:'1001',customerName:'علي فاضل',partDescription:'منفذ شحن',notes:'مطلوب سريع',status:'pending',preparedBy:'موظف الشركة',createdAt:nowISO(),updatedAt:nowISO(),usedInCompletionId:null,returnReason:'',returnRequestedBy:null,returnHandledBy:null,returnHandledAt:null});
-        const r2 = {id:uid('req'),salesInvoiceNumber:'INV-1001-B',deviceId:d1.id,receiptNumber:'1001',customerName:'علي فاضل',partDescription:'بطارية',notes:'بطارية أصلية',status:'prepared',sentBy:'موظف المحل',companyHandledBy:'موظف الشركة',createdAt:nowISO(),updatedAt:nowISO()};
+        const r2 = {id:uid('req'),salesInvoiceNumber:'INV-1001-B',salesInvoiceAmount:40000,deviceId:d1.id,receiptNumber:'1001',customerName:'علي فاضل',partDescription:'بطارية',notes:'بطارية أصلية',status:'prepared',sentBy:'موظف المحل',companyHandledBy:'موظف الشركة',createdAt:nowISO(),updatedAt:nowISO()};
         db.supplyRequests.push(r2);
         db.partSlips.push({id:uid('ps'),requestId:r2.id,salesInvoiceNumber:r2.salesInvoiceNumber,deviceId:d1.id,receiptNumber:'1001',customerName:'علي فاضل',partDescription:'بطارية',notes:'بطارية أصلية',status:'pending',preparedBy:'موظف الشركة',createdAt:nowISO(),updatedAt:nowISO(),usedInCompletionId:null,returnReason:'',returnRequestedBy:null,returnHandledBy:null,returnHandledAt:null});
       }
