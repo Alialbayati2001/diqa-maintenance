@@ -1387,6 +1387,7 @@ const deviceStatusMap = {
       await_parts: {label:'انتظار قطع غيار', cls:'b-await-parts'},
       complete: {label:'مكتمل', cls:'b-complete'},
       delivered_company: {label:'تم إرساله للشركة', cls:'b-pending'},
+      delivered_customer: {label:'تم تسليمه للزبون', cls:'b-delivered'},
       delivered: {label:'تم التسليم', cls:'b-delivered'},
       not_repaired: {label:'لم يتم التصليح', cls:'b-not-prepared'}
     };
@@ -1417,6 +1418,7 @@ const deviceStatusMap = {
         await_parts: 'قيد الصيانة',
         complete: 'تم التصليح',
         delivered_company: 'تم إرساله للشركة للتسليم',
+        delivered_customer: 'تم التسليم للزبون',
         delivered: 'تم التسليم',
         not_repaired: 'تعذر التصليح'
       };
@@ -3740,9 +3742,33 @@ window.addEventListener('load', function(){
       renderAll();
     }
 
+    async function setDeviceDeliveredToCompany(deviceId){
+      const device = db.devices.find(d => d.id === deviceId);
+      if(!device) return;
+      const changed = await updateDeviceStatus(deviceId, 'delivered_company', {
+        deliveredAt: nowISO(),
+        deliveredBy: currentUser ? currentUser.fullName : '—'
+      });
+      if(!changed) return;
+      renderAll();
+      alert('تم إرسال الجهاز للشركة / دلفري بنجاح');
+    }
+
+    async function setDeviceDeliveredToCustomer(deviceId){
+      const device = db.devices.find(d => d.id === deviceId);
+      if(!device) return;
+      const changed = await updateDeviceStatus(deviceId, 'delivered_customer', {
+        deliveredAt: nowISO(),
+        deliveredBy: currentUser ? currentUser.fullName : '—'
+      });
+      if(!changed) return;
+      renderAll();
+      alert('تم تسليم الجهاز للزبون بنجاح');
+    }
+
     function renderDelivery(){
       const rows = db.devices
-        .filter(d => ['complete','delivered_company','delivered'].includes(d.status))
+        .filter(d => ['complete','delivered_company','delivered_customer','delivered'].includes(d.status))
         .map(d => `
           <tr>
             <td>${escapeHtml(d.receiptNumber)}</td>
@@ -3755,9 +3781,11 @@ window.addEventListener('load', function(){
             <td>
               ${
                 d.status === 'complete'
-                ? `<button class="small" onclick="setDeviceDeliveredToCompany('${d.id}')">تم إرسال الجهاز للشركة / دلفري</button>`
+                ? `<div class="actions"><button class="small" onclick="setDeviceDeliveredToCompany('${d.id}')">تم إرسال الجهاز للشركة / دلفري</button><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تم تسليم الجهاز للزبون</button></div>`
                 : d.status === 'delivered_company'
-                ? `<span class="muted">تم إرساله للشركة</span>`
+                ? `<div class="actions"><span class="muted">تم إرساله للشركة</span><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تم تسليم الجهاز للزبون</button></div>`
+                : d.status === 'delivered_customer'
+                ? `<span class="muted">تم التسليم للزبون</span>`
                 : `<span class="muted">تم التسليم</span>`
               }
             </td>
@@ -3767,7 +3795,7 @@ window.addEventListener('load', function(){
         <div class="section-title">
           <div>
             <h2>تسليم الجهاز</h2>
-            <p>إرسال الأجهزة المكتملة إلى الشركة أو متابعة التسليم</p>
+            <p>إرسال الأجهزة المكتملة إلى الشركة أو تسليمها مباشرة للزبون</p>
           </div>
         </div>
         <div class="table-wrap">
