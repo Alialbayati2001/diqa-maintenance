@@ -4063,19 +4063,22 @@ window.addEventListener('load', function(){
 
     function renderDelivery(){
       const rows = db.devices
-        .filter(d => ['complete','delivered_company','delivered_customer','delivered'].includes(d.status))
-        .map(d => `
+        .filter(d => ['complete','not_repaired','delivered_company','delivered_customer','delivered'].includes(d.status))
+        .map(d => {
+          const canChooseDeliveryWay = ['complete','not_repaired'].includes(d.status);
+          const noteText = d.status === 'not_repaired' ? (d.notRepairReason || 'لم يتم التصليح') : '—';
+          return `
           <tr>
             <td>${escapeHtml(d.receiptNumber)}</td>
             <td>${escapeHtml(d.customerName)}</td>
             <td>${escapeHtml(d.deviceType)}</td>
             <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
-            <td>${badge(deviceStatusMap, d.status)}</td>
+            <td>${badge(deviceStatusMap, d.status)}${d.status === 'not_repaired' ? `<div class="hint" style="margin-top:6px">${escapeHtml(noteText)}</div>` : ''}</td>
             <td>${escapeHtml(d.deliveredBy || '—')}</td>
             <td>${formatDateTime(d.deliveredAt)}</td>
             <td>
               ${
-                d.status === 'complete'
+                canChooseDeliveryWay
                 ? `<div class="actions"><button class="small" onclick="setDeviceDeliveredToCompany('${d.id}')">تم إرسال الجهاز للشركة / دلفري</button><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تم تسليم الجهاز للزبون</button></div>`
                 : d.status === 'delivered_company'
                 ? `<div class="actions"><span class="muted">تم إرساله للشركة</span><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تم تسليم الجهاز للزبون</button></div>`
@@ -4085,12 +4088,13 @@ window.addEventListener('load', function(){
               }
             </td>
           </tr>
-        `).join('');
+        `;
+        }).join('');
       document.getElementById('deliverySection').innerHTML = `
         <div class="section-title">
           <div>
             <h2>تسليم الجهاز</h2>
-            <p>إرسال الأجهزة المكتملة إلى الشركة أو تسليمها مباشرة للزبون</p>
+            <p>إرسال الأجهزة المكتملة أو غير المُصلحة إلى الشركة / الدلفري أو تسليمها مباشرة للزبون</p>
           </div>
         </div>
         <div class="table-wrap">
@@ -4107,7 +4111,7 @@ window.addEventListener('load', function(){
                 <th>إجراء</th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="8" class="muted">لا توجد أجهزة جاهزة</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="8" class="muted">لا توجد أجهزة جاهزة أو غير مُصلحة للتسليم</td></tr>`}</tbody>
           </table>
         </div>
       `;
