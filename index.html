@@ -404,7 +404,7 @@
           <section id="returnsSection" class="card panel section-page hidden"></section>
         </main>
       </div>
-      <div class="footer-note">هذه النسخة مهيأة للعمل مع Supabase عبر الجداول: devices / supply_requests / part_slips / completions مع حفظ محلي احتياطي داخل المتصفح عند الحاجة. — إصدار إصلاح طلبات التجهيز V5</div>
+      <div class="footer-note">هذه النسخة مهيأة للعمل مع Supabase عبر الجداول: devices / supply_requests / part_slips / completions مع حفظ محلي احتياطي داخل المتصفح عند الحاجة. — إصدار إصلاح طلبات التجهيز V6</div>
     </section>
   </div>
     <div id="scannerModal" class="scanner-modal">
@@ -495,6 +495,14 @@ const APP_CONFIG = {
     let lastScannedCode = '';
     let highlightedDeviceId = null;
     let editingReceiptId = null;
+
+    window.formatMoneyIQD = window.formatMoneyIQD || function(value){
+      return Number(value || 0).toLocaleString('ar-IQ');
+    };
+
+    window.formatCurrency = window.formatCurrency || function(value){
+      return `${window.formatMoneyIQD(value)} د.ع`;
+    };
 
     function loadDB(){
       const raw = localStorage.getItem(STORAGE_KEY);
