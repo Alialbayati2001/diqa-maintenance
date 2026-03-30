@@ -1273,6 +1273,7 @@ const APP_CONFIG = {
     function nowISO(){ return new Date().toISOString(); }
     function formatDateTime(iso){ if(!iso) return '—'; return new Date(iso).toLocaleString('ar-IQ'); }
     function escapeHtml(str=''){ return String(str).replace(/[&<>"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s])); }
+    function escapeJs(str=''){ return String(str).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n').replace(/\r/g,''); }
     function inferReceiptSerial(receiptNumber, fallbackIndex=0){
       const n = parseInt(String(receiptNumber || '').replace(/\D+/g, ''), 10);
       return Number.isFinite(n) && n > 0 ? n : fallbackIndex + 1;
@@ -1385,6 +1386,7 @@ const deviceStatusMap = {
       await_approval: {label:'انتظار موافقة الزبون', cls:'b-await-approval'},
       await_parts: {label:'انتظار قطع غيار', cls:'b-await-parts'},
       complete: {label:'مكتمل', cls:'b-complete'},
+      delivered_company: {label:'تم إرساله للشركة', cls:'b-pending'},
       delivered: {label:'تم التسليم', cls:'b-delivered'},
       not_repaired: {label:'لم يتم التصليح', cls:'b-not-prepared'}
     };
@@ -2375,12 +2377,78 @@ function renderShopReceive(){
     }
 
 function renderDevices(){
+      const section = document.getElementById('devicesSection');
+      if(!section) return;
+
       const filteredDevices = getFilteredDevices();
       const overdueCount = db.devices.filter(d => {
         const ageDays = d.createdAt ? ((new Date() - new Date(d.createdAt)) / (1000 * 60 * 60 * 24)) : 0;
         return ageDays >= 3 && !['complete','delivered','not_repaired'].includes(d.status);
       }).length;
       const notRepairedCount = db.devices.filter(d => d.status === 'not_repaired').length;
+      const completeCount = db.devices.filter(d => d.status === 'complete').length;
+      const deliveredCount = db.devices.filter(d => d.status === 'delivered').length;
+      const receivedCount = db.devices.filter(d => d.status === 'received').length;
+      const awaitApprovalCount = db.devices.filter(d => d.status === 'await_approval').length;
+      const awaitPartsCount = db.devices.filter(d => d.status === 'await_parts').length;
+      const deliveredCompanyCount = db.devices.filter(d => d.status === 'delivered_company').length;
+      const q = (deviceFilters.search || '').trim().toLowerCase();
+
+      let quickResult = '';
+      if(q.length >= 3){
+        const found = (db.devices || [])
+          .slice()
+          .sort((a, b) => getDeviceSearchScore(a, q) - getDeviceSearchScore(b, q))
+          .find(d => deviceMatchesSearch(d, q));
+
+        if(found){
+          const statusMeta = deviceStatusMap[found.status] || { label: found.status || '—', cls:'b-received' };
+          quickResult = `
+            <div class="quick-list">
+              <div class="close-row">
+                <h3>حالة الجهاز</h3>
+              </div>
+
+              <div class="summary-grid">
+                <div class="summary-card">
+                  <div class="k">رقم الوصل</div>
+                  <div class="v">${escapeHtml(found.receiptNumber || '—')}</div>
+                </div>
+
+                <div class="summary-card">
+                  <div class="k">اسم الزبون</div>
+                  <div class="v">${escapeHtml(found.customerName || '—')}</div>
+                </div>
+
+                <div class="summary-card">
+                  <div class="k">رقم الهاتف</div>
+                  <div class="v">${escapeHtml(found.phone || '—')}</div>
+                </div>
+
+                <div class="summary-card">
+                  <div class="k">الجهاز</div>
+                  <div class="v">${escapeHtml(found.deviceType || '—')}</div>
+                </div>
+
+                <div class="summary-card full">
+                  <div class="k">الحالة</div>
+                  <div class="v">${badge(deviceStatusMap, found.status)}</div>
+                </div>
+
+                <div class="summary-card full">
+                  <div class="k">ملاحظات</div>
+                  <div class="v">${escapeHtml(found.faultDescription || found.notRepairReason || '—')}</div>
+                </div>
+              </div>
+
+              <div class="summary-actions">
+                <button onclick="showDeviceSummaryByReceipt('${escapeJs(found.receiptNumber || '')}')">عرض التفاصيل</button>
+                <button class="secondary" onclick="printReceipt('${escapeJs(found.id)}')">طباعة الوصل</button>
+              </div>
+            </div>
+          `;
+        }
+      }
 
       const rows = filteredDevices.map(d => {
         const ageDays = d.createdAt ? ((new Date() - new Date(d.createdAt)) / (1000 * 60 * 60 * 24)) : 0;
@@ -2400,10 +2468,11 @@ function renderDevices(){
           <td>${d.status === 'not_repaired' ? `<span class="muted">${escapeHtml(d.notRepairReason || '—')}</span>` : '—'}</td>
           <td>
             <div class="actions">
+              <button class="small secondary" onclick="showDeviceSummaryByReceipt('${escapeJs(d.receiptNumber || '')}')">حالة الجهاز</button>
               ${(currentUser && ['technician','manager'].includes(currentUser.role)) ? `
                 <button class="small info" onclick="setDeviceStatus('${d.id}','await_approval')">انتظار موافقة</button>
                 <button class="small warning" onclick="setDeviceStatus('${d.id}','await_parts')">انتظار قطع</button>
-<button class="small danger" onclick="markDeviceNotRepaired('${d.id}')">لم يتم التصليح</button>
+                <button class="small danger" onclick="markDeviceNotRepaired('${d.id}')">لم يتم التصليح</button>
               ` : ''}
               <button class="small secondary" onclick="printReceipt('${d.id}')">طباعة الوصل</button>
               ${(currentUser && ['employee','manager'].includes(currentUser.role) && d.status === 'complete') ? `
@@ -2416,7 +2485,8 @@ function renderDevices(){
           </td>
         </tr>
       `}).join('');
-      document.getElementById('devicesSection').innerHTML = `
+
+      section.innerHTML = `
         <div class="section-title">
           <div>
             <h2>قائمة الأجهزة</h2>
@@ -2425,13 +2495,25 @@ function renderDevices(){
         </div>
 
         <div class="toolbar" style="margin-bottom:12px">
-          <input id="deviceSearchInput" class="search" placeholder="بحث برقم الهاتف أو الباركود أو اسم الزبون أو رقم الوصل" value="${escapeHtml(deviceFilters.search)}" oninput="setDeviceSearch(this.value)" />
+          <input id="deviceSearchInput" class="search" type="text" placeholder="ابحث باسم الزبون أو رقم الهاتف أو رقم الوصل أو نوع الجهاز" value="${escapeHtml(deviceFilters.search || '')}" oninput="setDeviceSearch(this.value)" />
+          <select id="deviceStatusFilter" onchange="setDeviceFilter(this.value)" style="max-width:240px">
+            <option value="all" ${deviceFilters.type === 'all' ? 'selected' : ''}>كل الحالات</option>
+            <option value="received" ${deviceFilters.type === 'received' ? 'selected' : ''}>مستلم (${receivedCount})</option>
+            <option value="await_approval" ${deviceFilters.type === 'await_approval' ? 'selected' : ''}>انتظار موافقة الزبون (${awaitApprovalCount})</option>
+            <option value="await_parts" ${deviceFilters.type === 'await_parts' ? 'selected' : ''}>انتظار قطع (${awaitPartsCount})</option>
+            <option value="complete" ${deviceFilters.type === 'complete' ? 'selected' : ''}>مكتمل (${completeCount})</option>
+            <option value="delivered_company" ${deviceFilters.type === 'delivered_company' ? 'selected' : ''}>تم إرساله للشركة (${deliveredCompanyCount})</option>
+            <option value="delivered" ${deviceFilters.type === 'delivered' ? 'selected' : ''}>تم التسليم (${deliveredCount})</option>
+            <option value="not_repaired" ${deviceFilters.type === 'not_repaired' ? 'selected' : ''}>لم يتم التصليح (${notRepairedCount})</option>
+            <option value="overdue" ${deviceFilters.type === 'overdue' ? 'selected' : ''}>الأجهزة المتأخرة (${overdueCount})</option>
+          </select>
           <button class="small info" onclick="startBarcodeSearch()">بحث بالكاميرا</button>
-          <button class="small secondary" onclick="openSummaryFromSearch()">ملخص الوصل</button>
-          <button class="small ${deviceFilters.type === 'all' ? '' : 'secondary'}" onclick="setDeviceFilter('all')">الكل</button>
-          <button class="small ${deviceFilters.type === 'overdue' ? 'danger' : 'warning'}" onclick="setDeviceFilter('overdue')">الأجهزة المتأخرة (${overdueCount})</button>
-          <button class="small ${deviceFilters.type === 'not_repaired' ? 'danger' : 'gray'}" onclick="setDeviceFilter('not_repaired')">غير قابلة للتصليح (${notRepairedCount})</button>
+          <button class="small secondary" onclick="openSummaryFromSearch()">حالة الجهاز</button>
         </div>
+
+        ${quickResult}
+
+        <div class="hint" style="margin-bottom:10px">عدد النتائج: ${filteredDevices.length}</div>
 
         <div class="table-wrap">
           <table>
@@ -2724,17 +2806,92 @@ window.addEventListener('load', function(){
       alert(`رقم الوصل: ${summary.receiptNumber}\nالزبون: ${summary.customerName}\nالحالة: ${summary.statusLabel}\nنوع الجهاز: ${summary.deviceType}\nالمبلغ: ${formatRepairAmountLabel(summary.amount)}`);
     }
 
+    function setDeviceSearch(value){
+      deviceFilters.search = String(value || '');
+      highlightedDeviceId = null;
+      renderDevices();
+    }
+
+    function setDeviceFilter(type){
+      deviceFilters.type = type || 'all';
+      renderDevices();
+    }
+
+    function deviceMatchesSearch(device, q){
+      const normalized = String(q || '').trim().toLowerCase();
+      if(!normalized) return true;
+      const receipt = String(device.receiptNumber || '').trim().toLowerCase();
+      const barcode = String(device.barcodeValue || '').trim().toLowerCase();
+      const phone = String(device.phone || '').trim().toLowerCase();
+      const customerName = String(device.customerName || '').trim().toLowerCase();
+      const deviceType = String(device.deviceType || '').trim().toLowerCase();
+      const deviceColor = String(device.deviceColor || '').trim().toLowerCase();
+      const receivedBy = String(device.receivedBy || '').trim().toLowerCase();
+      const notRepairReason = String(device.notRepairReason || '').trim().toLowerCase();
+      const statusLabel = String((deviceStatusMap[device.status] || {}).label || '').trim().toLowerCase();
+
+      return (
+        receipt.includes(normalized) ||
+        barcode.includes(normalized) ||
+        phone.includes(normalized) ||
+        customerName.includes(normalized) ||
+        deviceType.includes(normalized) ||
+        deviceColor.includes(normalized) ||
+        receivedBy.includes(normalized) ||
+        notRepairReason.includes(normalized) ||
+        statusLabel.includes(normalized)
+      );
+    }
+
+    function getDeviceSearchScore(device, q){
+      const normalized = String(q || '').trim().toLowerCase();
+      const receipt = String(device.receiptNumber || '').trim().toLowerCase();
+      const barcode = String(device.barcodeValue || '').trim().toLowerCase();
+      const phone = String(device.phone || '').trim().toLowerCase();
+      const customerName = String(device.customerName || '').trim().toLowerCase();
+      const deviceType = String(device.deviceType || '').trim().toLowerCase();
+      const deviceColor = String(device.deviceColor || '').trim().toLowerCase();
+      const statusLabel = String((deviceStatusMap[device.status] || {}).label || '').trim().toLowerCase();
+
+      if(receipt === normalized) return 1;
+      if(barcode === normalized) return 2;
+      if(phone === normalized) return 3;
+      if(customerName === normalized) return 4;
+      if(receipt.startsWith(normalized)) return 5;
+      if(barcode.startsWith(normalized)) return 6;
+      if(phone.startsWith(normalized)) return 7;
+      if(customerName.startsWith(normalized)) return 8;
+      if(receipt.includes(normalized)) return 9;
+      if(barcode.includes(normalized)) return 10;
+      if(phone.includes(normalized)) return 11;
+      if(customerName.includes(normalized)) return 12;
+      if(deviceType.includes(normalized)) return 13;
+      if(deviceColor.includes(normalized)) return 14;
+      if(statusLabel.includes(normalized)) return 15;
+      return 999;
+    }
+
     function openSummaryFromSearch(){
       const q = String(deviceFilters.search || '').trim();
       if(!q){
-        alert('اكتب رقم الوصل أو الباركود أولاً');
+        alert('اكتب اسم الزبون أو رقم الهاتف أو رقم الوصل أو الباركود أولاً');
         return;
       }
-      const found = DataAPI.getDeviceByBarcode(q) || DataAPI.getDeviceByReceipt(q);
+      const normalized = q.toLowerCase();
+      const found = (db.devices || [])
+        .slice()
+        .sort((a, b) => getDeviceSearchScore(a, normalized) - getDeviceSearchScore(b, normalized))
+        .find(d => deviceMatchesSearch(d, normalized));
       if(!found){
-        alert('لم يتم العثور على الوصل');
+        alert('لم يتم العثور على الجهاز');
         return;
       }
+      highlightedDeviceId = found.id || null;
+      renderDevices();
+      setTimeout(() => {
+        const row = document.getElementById(`device_row_${found.id}`);
+        if(row) row.scrollIntoView({ behavior:'smooth', block:'center' });
+      }, 80);
       showDeviceSummaryByReceipt(found.receiptNumber);
     }
 
@@ -2742,7 +2899,7 @@ window.addEventListener('load', function(){
       const q = (deviceFilters.search || '').trim().toLowerCase();
       const now = new Date();
 
-      return db.devices.filter(d => {
+      const results = db.devices.filter(d => {
         const ageDays = d.createdAt ? ((now - new Date(d.createdAt)) / (1000 * 60 * 60 * 24)) : 0;
         const isOverdue = ageDays >= 3 && !['complete','delivered','not_repaired'].includes(d.status);
 
@@ -2751,6 +2908,7 @@ window.addEventListener('load', function(){
           case 'overdue': typeMatch = isOverdue; break;
           case 'not_repaired': typeMatch = d.status === 'not_repaired'; break;
           case 'complete': typeMatch = d.status === 'complete'; break;
+          case 'delivered_company': typeMatch = d.status === 'delivered_company'; break;
           case 'delivered': typeMatch = d.status === 'delivered'; break;
           case 'received': typeMatch = d.status === 'received'; break;
           case 'await_parts': typeMatch = d.status === 'await_parts'; break;
@@ -2758,22 +2916,15 @@ window.addEventListener('load', function(){
           default: typeMatch = true;
         }
         if(!typeMatch) return false;
-
         if(!q) return true;
-        const hay = [
-          d.receiptNumber,
-          `barcode ${d.barcodeValue || d.receiptNumber || ''}`,
-          d.customerName,
-          d.deviceType,
-          d.deviceColor,
-          d.phone,
-          d.receivedBy,
-          d.notRepairReason,
-          (deviceStatusMap[d.status] || {}).label
-        ].filter(Boolean).join(' ').toLowerCase();
-
-        return hay.includes(q);
+        return deviceMatchesSearch(d, q);
       });
+
+      if(q){
+        results.sort((a, b) => getDeviceSearchScore(a, q) - getDeviceSearchScore(b, q));
+      }
+
+      return results;
     }
 
     function getAvailableSupplyDevices(searchTerm = ''){
