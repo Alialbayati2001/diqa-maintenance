@@ -1876,6 +1876,89 @@ const deviceStatusMap = {
       }
     }
 
+
+    function getSmartAlerts(){
+      const now = Date.now();
+      const alerts = [];
+
+      db.devices.forEach(d => {
+        const baseDate = d.updatedAt || d.createdAt || null;
+        if(!baseDate) return;
+
+        const time = new Date(baseDate).getTime();
+        if(Number.isNaN(time)) return;
+
+        const hours = Math.floor((now - time) / (1000 * 60 * 60));
+
+        if(!['complete', 'delivered', 'not_repaired'].includes(d.status) && hours >= 24){
+          alerts.push({
+            type: 'late-device',
+            sort: 2,
+            text: `الجهاز ${d.receiptNumber || '-'} متأخر (${hours} ساعة)`
+          });
+        }
+
+        if(d.status === 'complete' && !d.deliveredAt){
+          alerts.push({
+            type: 'ready-device',
+            sort: 3,
+            text: `الجهاز ${d.receiptNumber || '-'} جاهز ولم يُسلّم`
+          });
+        }
+      });
+
+      db.supplyRequests.forEach(r => {
+        const baseDate = r.updatedAt || r.createdAt || null;
+        if(!baseDate) return;
+
+        const time = new Date(baseDate).getTime();
+        if(Number.isNaN(time)) return;
+
+        const minutes = Math.floor((now - time) / (1000 * 60));
+
+        if(r.status === 'pending' && minutes >= 30){
+          alerts.push({
+            type: 'late-supply',
+            sort: 1,
+            text: `طلب تجهيز ${r.salesInvoiceNumber || r.id || '-'} متأخر (${minutes} دقيقة)`
+          });
+        }
+      });
+
+      alerts.sort((a, b) => a.sort - b.sort || a.text.localeCompare(b.text, 'ar'));
+      return alerts;
+    }
+
+    function renderSmartAlerts(){
+      const alerts = getSmartAlerts();
+      if(!alerts.length){
+        return `
+          <div class="quick-list" style="border-color:#2cb9c2;margin-top:0">
+            <div class="close-row">
+              <h3>التنبيهات الذكية</h3>
+            </div>
+            <div class="hint">لا توجد تنبيهات حالياً</div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="quick-list" style="border-color:#ea353c;margin-top:0">
+          <div class="close-row">
+            <h3>التنبيهات الذكية</h3>
+            <span class="notif">${alerts.length}</span>
+          </div>
+          <div style="display:grid;gap:8px">
+            ${alerts.map(a => `
+              <div style="padding:10px 12px;border:1px solid #ea353c;border-radius:12px;background:rgba(234,53,60,.08);font-weight:700">
+                ${a.text}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     function renderDashboard(){
       const today = getIraqTodayDate();
       const now = new Date();
@@ -1908,6 +1991,7 @@ const deviceStatusMap = {
             <p>ملخص سريع لحالة النظام</p>
           </div>
         </div>
+        ${renderSmartAlerts()}
         <div class="stats">
           <div class="stat"><div class="label">إجمالي الأجهزة</div><div class="value">${totalDevices}</div></div>
           <div class="stat clickable" onclick="openDashboardQuickList('received_today')"><div class="label">استلام اليوم</div><div class="value">${receivedToday}</div></div>
