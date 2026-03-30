@@ -2495,7 +2495,8 @@ function renderDevices(){
         </div>
 
         <div class="toolbar" style="margin-bottom:12px">
-          <input id="deviceSearchInput" class="search" type="text" placeholder="ابحث باسم الزبون أو رقم الهاتف أو رقم الوصل أو نوع الجهاز" value="${escapeHtml(deviceFilters.search || '')}" oninput="setDeviceSearch(this.value)" />
+          <input id="deviceSearchInput" class="search" type="text" placeholder="ابحث باسم الزبون أو رقم الهاتف أو رقم الوصل أو نوع الجهاز" value="${escapeHtml(deviceFilters.search || '')}" oninput="setDeviceSearch(this.value)" onkeydown="if(event.key==='Enter'){ event.preventDefault(); setDeviceSearch(this.value); }" />
+          <button type="button" onclick="setDeviceSearch(document.getElementById('deviceSearchInput')?.value || '')">بحث</button>
           <select id="deviceStatusFilter" onchange="setDeviceFilter(this.value)" style="max-width:240px">
             <option value="all" ${deviceFilters.type === 'all' ? 'selected' : ''}>كل الحالات</option>
             <option value="received" ${deviceFilters.type === 'received' ? 'selected' : ''}>مستلم (${receivedCount})</option>
