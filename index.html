@@ -453,21 +453,127 @@
     
     const MAINTENANCE_PHONE = "07742228831";
 
-    const DEVICE_BRANDS = ['iphone','samsung','realme','redmi','poco','mi','vivo','infinix','tecno','oppo','allcall','alcaterl','tcl','honor','huawie','blackview','wiko','LG','redmagic'];
+    const DEVICE_BRANDS = ['iphone','samsung','huawie','huawei','honor','redmi','realme','oppo','vivo','infinix','tecno','moto','motorola','allcall','alcatel','LG','hisense','hisens','blackview','doogee','dooge','nokia','TCL','zte','wiko','lenovo','poco','mi','redmagic'];
+    const SERIES_BRAND_HINTS = {
+      a: ['samsung','oppo','blackview'],
+      y: ['huawie','huawei','vivo'],
+      c: ['realme','nokia'],
+      note: ['samsung','redmi','infinix'],
+      spark: ['tecno'],
+      pop: ['tecno'],
+      camon: ['tecno'],
+      pova: ['tecno'],
+      phantom: ['tecno'],
+      hot: ['infinix'],
+      zero: ['infinix'],
+      smart: ['infinix','tecno'],
+      reno: ['oppo'],
+      find: ['oppo'],
+      f: ['oppo','samsung'],
+      k: ['oppo','redmi'],
+      m: ['samsung'],
+      s: ['samsung'],
+      z: ['samsung'],
+      j: ['samsung'],
+      core: ['samsung'],
+      prime: ['samsung','tecno'],
+      nova: ['huawie','huawei'],
+      p: ['huawie','huawei'],
+      x: ['honor'],
+      narzo: ['realme'],
+      gt: ['realme'],
+      civi: ['mi'],
+      xiaomi: ['mi']
+    };
 
-    function normalizeBrandInput(value=''){
-      const raw = String(value || '').trim();
+    function normalizeDeviceSeriesToken(token=''){
+      const raw = String(token || '').trim();
       if(!raw) return '';
+      if(/^[a-z]$/i.test(raw)) return raw.toUpperCase();
       const lower = raw.toLowerCase();
-      for(const brand of DEVICE_BRANDS){
-        if(lower === brand.toLowerCase()) return brand;
-        if(lower.startsWith(brand.toLowerCase() + ' ')) return brand + raw.slice(brand.length);
+      const exactSeries = Object.keys(SERIES_BRAND_HINTS).find(key => key.toLowerCase() === lower);
+      if(exactSeries){
+        return /^[a-z]$/i.test(exactSeries) ? exactSeries.toUpperCase() : exactSeries;
       }
       return raw;
     }
 
-    function deviceBrandSuggestions(){
-      return DEVICE_BRANDS.map(b => `<option value="${b} "></option>`).join('');
+    function getMatchingSeriesKeys(prefix=''){
+      const value = String(prefix || '').trim().toLowerCase();
+      if(!value) return [];
+      const keys = Object.keys(SERIES_BRAND_HINTS);
+      const exact = keys.filter(key => key.toLowerCase() === value);
+      if(exact.length) return exact;
+      return keys.filter(key => key.toLowerCase().startsWith(value)).slice(0, 12);
+    }
+
+    function normalizeBrandInput(value=''){
+      const raw = String(value || '').trim();
+      if(!raw) return '';
+      const parts = raw.split(/\s+/).filter(Boolean);
+      const first = parts[0] || '';
+      const matchedBrand = DEVICE_BRANDS.find(b => b.toLowerCase() === first.toLowerCase());
+      if(matchedBrand){
+        const rest = parts.slice(1).map((part, index) => index === 0 ? normalizeDeviceSeriesToken(part) : part);
+        return [matchedBrand, ...rest].join(' ').trim();
+      }
+      if(parts.length === 1){
+        return normalizeDeviceSeriesToken(parts[0]);
+      }
+      return [parts[0], normalizeDeviceSeriesToken(parts[1]), ...parts.slice(2)].join(' ').trim();
+    }
+
+    function getKnownDeviceModelsByBrand(brand=''){
+      const target = String(brand || '').trim().toLowerCase();
+      if(!target) return [];
+      const seen = new Set();
+      return (db.devices || [])
+        .map(d => normalizeBrandInput(String(d?.deviceType || '').trim()))
+        .filter(Boolean)
+        .filter(name => name.toLowerCase().startsWith(target + ' '))
+        .filter(name => {
+          const key = name.toLowerCase();
+          if(seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 30);
+    }
+
+    function buildSeriesHintOptions(series=''){
+      const keys = getMatchingSeriesKeys(series);
+      const seen = new Set();
+      return keys
+        .flatMap(key => {
+          const brands = SERIES_BRAND_HINTS[key] || [];
+          return brands.map(brand => {
+            const matchedBrand = DEVICE_BRANDS.find(b => b.toLowerCase() === String(brand || '').toLowerCase()) || brand;
+            return `${matchedBrand} ${normalizeDeviceSeriesToken(key)} `;
+          });
+        })
+        .filter(value => {
+          const k = value.toLowerCase();
+          if(seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+    }
+
+    function deviceBrandSuggestions(currentValue=''){
+      const normalized = normalizeBrandInput(currentValue || '');
+      const parts = String(normalized || '').trim().split(/\s+/).filter(Boolean);
+      const first = parts[0] || '';
+      const brandOptions = DEVICE_BRANDS.map(b => `<option value="${escapeHtml(b)} "></option>`);
+      if(!first) return brandOptions.join('');
+      const matchedBrand = DEVICE_BRANDS.find(b => b.toLowerCase() === first.toLowerCase());
+      if(matchedBrand){
+        const modelOptions = getKnownDeviceModelsByBrand(matchedBrand).map(name => `<option value="${escapeHtml(name)}"></option>`);
+        const second = parts[1] || '';
+        const seriesOptions = second ? buildSeriesHintOptions(second).map(name => `<option value="${escapeHtml(name)}"></option>`) : [];
+        return [...brandOptions, ...seriesOptions, ...modelOptions].join('');
+      }
+      const seriesOptions = buildSeriesHintOptions(first).map(name => `<option value="${escapeHtml(name)}"></option>`);
+      return [...seriesOptions, ...brandOptions].join('');
     }
 
     const RECEIPT_NOTE = "يسقط حق المطالبة بالجهاز بعد شهر من اكمال تصليح الجهاز";
@@ -2290,18 +2396,19 @@ const deviceStatusMap = {
         refreshDeviceBrandList();
         return;
       }
-      const parts = val.trimStart().split(/\s+/);
-      const first = parts[0] || '';
-      const matched = DEVICE_BRANDS.find(b => b.toLowerCase() === first.toLowerCase());
-      if(matched && first !== matched){
-        const rest = val.trimStart().slice(first.length);
-        input.value = matched + rest;
-      }
+      const leadingSpaces = val.match(/^\s*/)?.[0] || '';
+      const trimmedStart = val.trimStart();
+      const hadTrailingSpace = /\s$/.test(val);
+      const normalized = normalizeBrandInput(trimmedStart);
+      input.value = leadingSpaces + normalized + (hadTrailingSpace ? ' ' : '');
+      refreshDeviceBrandList();
     }
 
     function refreshDeviceBrandList(){
-      document.querySelectorAll('#deviceBrandList').forEach(dl => {
-        dl.innerHTML = deviceBrandSuggestions();
+      document.querySelectorAll('datalist[data-owner-id]').forEach(dl => {
+        const ownerId = dl.getAttribute('data-owner-id');
+        const ownerInput = ownerId ? document.getElementById(ownerId) : null;
+        dl.innerHTML = deviceBrandSuggestions(ownerInput?.value || '');
       });
     }
 
@@ -2337,7 +2444,7 @@ function renderShopReceive(){
         <form class="grid grid-2" onsubmit="createDevice(event)">
           <div><label>اسم الزبون</label><input id="customerName" required /></div>
           <div><label>رقم الهاتف</label><input id="phone" required /></div>
-          <div><label>نوع الجهاز</label><input id="deviceType" required /></div>
+          <div><label>نوع الجهاز</label><input id="deviceType" list="deviceBrandList" placeholder="مثال: samsung A55 أو iphone 12" oninput="handleDeviceTypeInput(this)" required /><datalist id="deviceBrandList" data-owner-id="deviceType"></datalist><div class="hint">ابدأ باسم الشركة أولاً ثم الموديل. أمثلة ذكية: A / Y / note / spark / hot / zero / camon / reno</div></div>
           <div><label>لون الجهاز</label><input id="deviceColor" placeholder="مثال: أسود / أبيض / أزرق" required /></div>
           <div><label>اسم الموظف المستلم</label><input id="receivedBy" placeholder="يكتب الموظف اسمه هنا" autocomplete="off" /></div>
           <div style="grid-column:1/-1"><label>العطل</label><textarea id="faultDescription" required></textarea></div>
@@ -3331,7 +3438,7 @@ window.addEventListener('load', function(){
               </div>
               <div>
                 <label>نوع الجهاز</label>
-                <input id="legacyDeviceType" list="deviceBrandList" placeholder="مثال: tecno spark 20" oninput="handleDeviceTypeInput(this)" />
+                <input id="legacyDeviceType" list="legacyDeviceBrandList" placeholder="مثال: tecno spark 20" oninput="handleDeviceTypeInput(this)" /><datalist id="legacyDeviceBrandList" data-owner-id="legacyDeviceType"></datalist>
               </div>
               <div>
                 <label>لون الجهاز</label>
