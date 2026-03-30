@@ -476,24 +476,121 @@
       z: ['samsung'],
       j: ['samsung'],
       core: ['samsung'],
-      prime: ['samsung','tecno'],
+      prime: ['samsung','tecno','huawie','huawei'],
       nova: ['huawie','huawei'],
       p: ['huawie','huawei'],
-      x: ['honor'],
+      x: ['honor','redmi','poco'],
       narzo: ['realme'],
-      gt: ['realme'],
+      gt: ['realme','infinix'],
       civi: ['mi'],
-      xiaomi: ['mi']
+      xiaomi: ['mi'],
+      g: ['moto','nokia'],
+      e: ['moto','nokia'],
+      v: ['vivo','LG'],
+      t: ['vivo','TCL']
+    };
+
+    const SMART_MODEL_ALIASES = {
+      a12: ['samsung A12','oppo A12'],
+      a10: ['samsung A10','oppo A10'],
+      a11: ['oppo A11','blackview A11'],
+      a15: ['samsung A15','oppo A15'],
+      a16: ['samsung A16','oppo A16'],
+      a17: ['oppo A17'],
+      a18: ['samsung A18','oppo A18'],
+      a31: ['samsung A31','oppo A31'],
+      a32: ['samsung A32','oppo A32'],
+      a33: ['samsung A33','oppo A33'],
+      a34: ['samsung A34','oppo A34'],
+      a35: ['samsung A35','oppo A35'],
+      a36: ['samsung A36','oppo A36'],
+      a37: ['oppo A37'],
+      a38: ['oppo A38'],
+      a50: ['samsung A50','oppo A5 2020'],
+      a52: ['samsung A52','oppo A52'],
+      a53: ['samsung A53','oppo A53'],
+      a54: ['samsung A54','oppo A54'],
+      a55: ['samsung A55','oppo A55'],
+      a57: ['oppo A57'],
+      a58: ['oppo A58'],
+      a60: ['samsung A60','oppo A60'],
+      a72: ['samsung A72','oppo A72'],
+      a73: ['samsung A73','oppo A73'],
+      a74: ['oppo A74'],
+      a76: ['oppo A76'],
+      a77: ['oppo A77'],
+      a78: ['oppo A78'],
+      a79: ['oppo A79'],
+      a80: ['oppo A80'],
+      a3: ['samsung A3','oppo A3','blackview A3'],
+      a5: ['samsung A5','oppo A5'],
+      a7: ['samsung A7','oppo A7'],
+      a9: ['samsung A9','oppo A9'],
+      y5: ['huawie Y5','huawei Y5','vivo Y5s'],
+      y6: ['huawie Y6','huawei Y6','vivo Y6'],
+      y7: ['huawie Y7','huawei Y7','vivo Y7s'],
+      y8: ['huawie Y8p','huawei Y8p','vivo Y81'],
+      y9: ['huawie Y9 2019','huawei Y9 2019','huawie Y9 Prime 2019','huawei Y9 Prime 2019','huawie Y9s','huawei Y9s','huawie Y9a','huawei Y9a','vivo Y9s'],
+      y11: ['vivo Y11','huawie Y11','huawei Y11'],
+      y12: ['vivo Y12','samsung A12'],
+      y15: ['vivo Y15','huawie Y15','huawei Y15'],
+      y16: ['vivo Y16'],
+      y17: ['vivo Y17'],
+      y19: ['vivo Y19'],
+      y20: ['vivo Y20'],
+      y21: ['vivo Y21'],
+      y27: ['vivo Y27'],
+      y28: ['vivo Y28'],
+      y29: ['vivo Y29'],
+      y33: ['vivo Y33s'],
+      y35: ['vivo Y35'],
+      y36: ['vivo Y36'],
+      y53: ['vivo Y53s'],
+      y55: ['vivo Y55'],
+      y81: ['vivo Y81'],
+      y91: ['vivo Y91'],
+      y93: ['vivo Y93'],
+      y95: ['vivo Y95'],
+      note: ['samsung Note 8','samsung Note 9','samsung Note 10','samsung Note 10 Plus','samsung Note 20','samsung Note 20 Ultra','redmi Note 8','redmi Note 9','redmi Note 10','redmi Note 11','redmi Note 12','redmi Note 13','redmi Note 14','infinix Note 10','infinix Note 11','infinix Note 12','infinix Note 30','infinix Note 40','infinix Note 50'],
+      spark: ['tecno Spark Go','tecno Spark 8','tecno Spark 10','tecno Spark 20','tecno Spark 30'],
+      hot: ['infinix Hot 10','infinix Hot 11','infinix Hot 12','infinix Hot 20','infinix Hot 30','infinix Hot 40'],
+      zero: ['infinix Zero 8','infinix Zero X','infinix Zero 20','infinix Zero 30','infinix Zero 40'],
+      camon: ['tecno Camon 18','tecno Camon 19','tecno Camon 20','tecno Camon 30','tecno Camon 40'],
+      pop: ['tecno Pop 5','tecno Pop 7','tecno Pop 8','tecno Pop 9'],
+      pova: ['tecno Pova 5','tecno Pova 6','tecno Pova Neo'],
+      phantom: ['tecno Phantom X','tecno Phantom X2'],
+      reno: ['oppo Reno 5','oppo Reno 6','oppo Reno 7','oppo Reno 8','oppo Reno 11','oppo Reno 12','oppo Reno 13'],
+      find: ['oppo Find X3','oppo Find X5','oppo Find X7','oppo Find N3'],
+      narzo: ['realme Narzo 50','realme Narzo 60','realme Narzo 70'],
+      gt: ['realme GT Master','realme GT 2','realme GT 6','infinix GT 10 Pro'],
+      nova: ['huawei nova 7i','huawei nova 9','huawei nova 11','huawei nova 12','huawei nova 13'],
+      prime: ['huawei Y9 Prime 2019','tecno Spark Go 2024'],
+      g: ['moto G54','moto G84','moto G Play','nokia G10','nokia G21'],
+      e: ['moto E6','moto E7','moto E13','nokia E71'],
+      c: ['nokia C10','nokia C21','realme C11','realme C21','realme C53','realme C67'],
+      x: ['honor X5','honor X6','honor X7','redmi X','poco X3','poco X6'],
+      f: ['oppo F11','oppo F19','samsung F12'],
+      m: ['samsung M12','samsung M14','samsung M33'],
+      s: ['samsung S21','samsung S22','samsung S23','samsung S24'],
+      z: ['samsung Z Flip','samsung Z Fold'],
+      j: ['samsung J7','samsung J8'],
+      core: ['samsung Core Prime'],
+      smart: ['infinix Smart 7','infinix Smart 8','tecno Spark Go'],
+      civi: ['mi Civi','mi Civi 2','mi Civi 4 Pro']
     };
 
     function normalizeDeviceSeriesToken(token=''){
       const raw = String(token || '').trim();
       if(!raw) return '';
       if(/^[a-z]$/i.test(raw)) return raw.toUpperCase();
+      if(/^[a-z]\d+[a-z]*$/i.test(raw)) return raw.charAt(0).toUpperCase() + raw.slice(1);
       const lower = raw.toLowerCase();
-      const exactSeries = Object.keys(SERIES_BRAND_HINTS).find(key => key.toLowerCase() === lower);
+      const exactSeries = Object.keys(SERIES_BRAND_HINTS).find(key => key.toLowerCase() === lower)
+        || Object.keys(SMART_MODEL_ALIASES).find(key => key.toLowerCase() === lower);
       if(exactSeries){
-        return /^[a-z]$/i.test(exactSeries) ? exactSeries.toUpperCase() : exactSeries;
+        if(/^[a-z]$/i.test(exactSeries)) return exactSeries.toUpperCase();
+        if(/^[a-z]\d+[a-z]*$/i.test(exactSeries)) return exactSeries.charAt(0).toUpperCase() + exactSeries.slice(1);
+        return exactSeries;
       }
       return raw;
     }
@@ -501,10 +598,10 @@
     function getMatchingSeriesKeys(prefix=''){
       const value = String(prefix || '').trim().toLowerCase();
       if(!value) return [];
-      const keys = Object.keys(SERIES_BRAND_HINTS);
+      const keys = [...new Set([...Object.keys(SERIES_BRAND_HINTS), ...Object.keys(SMART_MODEL_ALIASES)])];
       const exact = keys.filter(key => key.toLowerCase() === value);
       if(exact.length) return exact;
-      return keys.filter(key => key.toLowerCase().startsWith(value)).slice(0, 12);
+      return keys.filter(key => key.toLowerCase().startsWith(value)).slice(0, 20);
     }
 
     function normalizeBrandInput(value=''){
@@ -540,40 +637,66 @@
         .slice(0, 30);
     }
 
+    function getAliasModelSuggestions(prefix=''){
+      const value = String(prefix || '').trim().toLowerCase();
+      if(!value) return [];
+      const seen = new Set();
+      return Object.entries(SMART_MODEL_ALIASES)
+        .filter(([key]) => {
+          const normalizedKey = String(key || '').toLowerCase();
+          return normalizedKey === value || normalizedKey.startsWith(value) || value.startsWith(normalizedKey);
+        })
+        .flatMap(([, models]) => models || [])
+        .filter(Boolean)
+        .filter(name => {
+          const k = String(name).toLowerCase();
+          if(seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        })
+        .slice(0, 40);
+    }
+
     function buildSeriesHintOptions(series=''){
       const keys = getMatchingSeriesKeys(series);
       const seen = new Set();
-      return keys
+      const hinted = keys
         .flatMap(key => {
+          const aliasModels = SMART_MODEL_ALIASES[key] || [];
+          if(aliasModels.length) return aliasModels;
           const brands = SERIES_BRAND_HINTS[key] || [];
           return brands.map(brand => {
             const matchedBrand = DEVICE_BRANDS.find(b => b.toLowerCase() === String(brand || '').toLowerCase()) || brand;
             return `${matchedBrand} ${normalizeDeviceSeriesToken(key)} `;
           });
-        })
-        .filter(value => {
-          const k = value.toLowerCase();
-          if(seen.has(k)) return false;
-          seen.add(k);
-          return true;
         });
+      return hinted.filter(value => {
+        const k = String(value).toLowerCase();
+        if(seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
     }
 
     function deviceBrandSuggestions(currentValue=''){
       const normalized = normalizeBrandInput(currentValue || '');
       const parts = String(normalized || '').trim().split(/\s+/).filter(Boolean);
       const first = parts[0] || '';
-      const brandOptions = DEVICE_BRANDS.map(b => `<option value="${escapeHtml(b)} "></option>`);
+      const brandOptions = DEVICE_BRANDS.map(b => `<option value="${escapeHtml(b)} " ></option>`);
       if(!first) return brandOptions.join('');
       const matchedBrand = DEVICE_BRANDS.find(b => b.toLowerCase() === first.toLowerCase());
       if(matchedBrand){
         const modelOptions = getKnownDeviceModelsByBrand(matchedBrand).map(name => `<option value="${escapeHtml(name)}"></option>`);
         const second = parts[1] || '';
         const seriesOptions = second ? buildSeriesHintOptions(second).map(name => `<option value="${escapeHtml(name)}"></option>`) : [];
-        return [...brandOptions, ...seriesOptions, ...modelOptions].join('');
+        const aliasOptions = second ? getAliasModelSuggestions(second)
+          .filter(name => name.toLowerCase().startsWith(matchedBrand.toLowerCase() + ' '))
+          .map(name => `<option value="${escapeHtml(name)}"></option>`) : [];
+        return [...brandOptions, ...aliasOptions, ...seriesOptions, ...modelOptions].join('');
       }
+      const aliasOptions = getAliasModelSuggestions(first).map(name => `<option value="${escapeHtml(name)}"></option>`);
       const seriesOptions = buildSeriesHintOptions(first).map(name => `<option value="${escapeHtml(name)}"></option>`);
-      return [...seriesOptions, ...brandOptions].join('');
+      return [...aliasOptions, ...seriesOptions, ...brandOptions].join('');
     }
 
     const RECEIPT_NOTE = "يسقط حق المطالبة بالجهاز بعد شهر من اكمال تصليح الجهاز";
