@@ -1560,10 +1560,53 @@ const deviceStatusMap = {
       return withCurrency ? `${formatMoneyIQD(amount)} د.ع` : formatMoneyIQD(amount);
     }
 
-    function getReceivedMaintenanceTotal(){
-      return db.devices
-        .filter(d => d.status === 'delivered')
+    function getIraqDateString(dateValue = new Date()){
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Baghdad',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).formatToParts(new Date(dateValue));
+
+      const year = parts.find(p => p.type === 'year')?.value || '0000';
+      const month = parts.find(p => p.type === 'month')?.value || '00';
+      const day = parts.find(p => p.type === 'day')?.value || '00';
+      return `${year}-${month}-${day}`;
+    }
+
+    function getIraqTodayDate(){
+      return getIraqDateString(new Date());
+    }
+
+    function isSameIraqDay(isoValue, iraqDay = getIraqTodayDate()){
+      if(!isoValue) return false;
+      return getIraqDateString(isoValue) === iraqDay;
+    }
+
+    function getTodayMaintenanceTotal(){
+      return getTodayDeliveredDevices()
         .reduce((sum, d) => sum + Number(d.repairAmount || 0), 0);
+    }
+
+    function getDevicePartsCost(deviceId){
+      const usedSlips = (db.partSlips || []).filter(slip =>
+        slip.deviceId === deviceId &&
+        slip.status === 'used'
+      );
+
+      return usedSlips.reduce((sum, slip) => {
+        const linkedRequest = (db.supplyRequests || []).find(req => req.id === slip.requestId);
+        return sum + Number(linkedRequest?.salesInvoiceAmount || 0);
+      }, 0);
+    }
+
+    function getDeliveredTodayDevicesPartsCost(){
+      return getTodayDeliveredDevices()
+        .reduce((sum, d) => sum + getDevicePartsCost(d.id), 0);
+    }
+
+    function getTodayProfit(){
+      return getTodayMaintenanceTotal() - getDeliveredTodayDevicesPartsCost();
     }
 
     function getReceiptEditableDevices(){
@@ -1658,7 +1701,7 @@ const deviceStatusMap = {
     
 
     function isSameDayIso(isoValue, day){
-      return !!isoValue && String(isoValue).startsWith(day);
+      return isSameIraqDay(isoValue, day);
     }
 
     function getOverdueDevicesList(){
@@ -1671,17 +1714,20 @@ const deviceStatusMap = {
     }
 
     function getTodayReceivedDevices(){
-      const today = new Date().toISOString().split('T')[0];
+      const today = getIraqTodayDate();
       return db.devices.filter(d => isSameDayIso(d.createdAt, today));
     }
 
     function getTodayDeliveredDevices(){
-      const today = new Date().toISOString().split('T')[0];
-      return db.devices.filter(d => isSameDayIso(d.deliveredAt, today));
+      const today = getIraqTodayDate();
+      return db.devices.filter(d =>
+        d.status === 'delivered' &&
+        isSameDayIso(d.deliveredAt, today)
+      );
     }
 
     function getTodayCompletedDevices(){
-      const today = new Date().toISOString().split('T')[0];
+      const today = getIraqTodayDate();
       return db.devices.filter(d => isSameDayIso(d.completedAt, today));
     }
 
@@ -1831,22 +1877,28 @@ const deviceStatusMap = {
     }
 
     function renderDashboard(){
-      const today = new Date().toISOString().split('T')[0];
+      const today = getIraqTodayDate();
       const now = new Date();
       const totalDevices = db.devices.length;
       const pendingSupply = db.supplyRequests.filter(x => x.status === 'pending').length;
       const pendingParts = db.partSlips.filter(x => x.status === 'pending').length;
-      const receivedToday = db.devices.filter(d => d.createdAt && d.createdAt.startsWith(today)).length;
-      const completedToday = db.devices.filter(d => d.completedAt && d.completedAt.startsWith(today)).length;
-      const deliveredToday = db.devices.filter(d => d.deliveredAt && d.deliveredAt.startsWith(today)).length;
+      const receivedToday = db.devices.filter(d => isSameDayIso(d.createdAt, today)).length;
+      const completedToday = db.devices.filter(d => isSameDayIso(d.completedAt, today)).length;
+      const deliveredToday = getTodayDeliveredDevices().length;
       const overdueDevices = db.devices.filter(d => {
         if(!d.createdAt) return false;
         const ageDays = (now - new Date(d.createdAt)) / (1000 * 60 * 60 * 24);
         return ageDays >= 3 && !['complete', 'delivered', 'not_repaired'].includes(d.status);
       }).length;
-      const receivedMaintenanceTotal = getReceivedMaintenanceTotal();
+      const todayMaintenanceTotal = getTodayMaintenanceTotal();
+      const deliveredTodayDevicesPartsCost = getDeliveredTodayDevicesPartsCost();
+      const todayProfit = getTodayProfit();
       const managerExtraStat = currentUser && currentUser.role === 'manager'
-        ? `<div class="stat"><div class="label">مجموع مبالغ الصيانة المستلمة</div><div class="value">${formatMoneyIQD(receivedMaintenanceTotal)}</div></div>`
+        ? `
+            <div class="stat"><div class="label">مجموع مبالغ صيانة الأجهزة المسلمة اليوم</div><div class="value">${formatMoneyIQD(todayMaintenanceTotal)}</div></div>
+            <div class="stat"><div class="label">كلفة قطع الأجهزة المسلمة اليوم</div><div class="value">${formatMoneyIQD(deliveredTodayDevicesPartsCost)}</div></div>
+            <div class="stat"><div class="label">أرباح الأجهزة المسلمة اليوم</div><div class="value">${formatMoneyIQD(todayProfit)}</div></div>
+          `
         : '';
 
       document.getElementById('dashboardSection').innerHTML = `
