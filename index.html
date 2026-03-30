@@ -404,7 +404,7 @@
           <section id="returnsSection" class="card panel section-page hidden"></section>
         </main>
       </div>
-      <div class="footer-note">هذه النسخة مهيأة للعمل مع Supabase عبر الجداول: devices / supply_requests / part_slips / completions مع حفظ محلي احتياطي داخل المتصفح عند الحاجة.</div>
+      <div class="footer-note">هذه النسخة مهيأة للعمل مع Supabase عبر الجداول: devices / supply_requests / part_slips / completions مع حفظ محلي احتياطي داخل المتصفح عند الحاجة. — إصدار إصلاح طلبات التجهيز V5</div>
     </section>
   </div>
     <div id="scannerModal" class="scanner-modal">
@@ -2976,30 +2976,26 @@ window.addEventListener('load', function(){
         };
 
         if(APP_CONFIG.dataProvider === 'supabase'){
-          if(typeof SupplyRequestsAPI.insertOne === 'function'){
-            await SupplyRequestsAPI.insertOne(requestItem);
-          } else {
-            const serializedRequest = (typeof SupplyRequestsAPI.serialize === 'function') ? SupplyRequestsAPI.serialize(requestItem) : {
-              id: requestItem.id,
-              device_id: requestItem.deviceId,
-              request_number: requestItem.salesInvoiceNumber || null,
-              sales_invoice_amount: Number(requestItem.salesInvoiceAmount || 0),
-              requested_part: requestItem.partDescription || '',
-              notes: requestItem.notes || '',
-              status: requestItem.status || 'pending',
-              requested_by: requestItem.sentBy || '',
-              company_handled_by: requestItem.companyHandledBy || null,
-              receipt_number_snapshot: requestItem.receiptNumber || '',
-              customer_name_snapshot: requestItem.customerName || '',
-              quantity: 1,
-              requested_at: requestItem.createdAt || new Date().toISOString(),
-              updated_at: requestItem.updatedAt || new Date().toISOString()
-            };
-            const { error: insertError } = await supabaseClient
-              .from(APP_CONFIG.supplyRequestsTable)
-              .insert(serializedRequest);
-            if(insertError) throw insertError;
-          }
+          const directRequestRow = {
+            id: requestItem.id,
+            device_id: requestItem.deviceId,
+            request_number: requestItem.salesInvoiceNumber || null,
+            sales_invoice_amount: Number(requestItem.salesInvoiceAmount || 0),
+            requested_part: requestItem.partDescription || '',
+            notes: requestItem.notes || '',
+            status: requestItem.status || 'pending',
+            requested_by: requestItem.sentBy || '',
+            company_handled_by: requestItem.companyHandledBy || null,
+            receipt_number_snapshot: requestItem.receiptNumber || '',
+            customer_name_snapshot: requestItem.customerName || '',
+            quantity: 1,
+            requested_at: requestItem.createdAt || new Date().toISOString(),
+            updated_at: requestItem.updatedAt || new Date().toISOString()
+          };
+          const { error: insertError } = await supabaseClient
+            .from(APP_CONFIG.supplyRequestsTable)
+            .insert(directRequestRow);
+          if(insertError) throw insertError;
         }
 
         db.supplyRequests.unshift(requestItem);
