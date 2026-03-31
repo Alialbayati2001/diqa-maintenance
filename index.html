@@ -189,6 +189,7 @@
     .b-pending{background:#1d4ed8;color:#dbeafe}
     .b-prepared{background:#166534;color:#dcfce7}
     .b-not-prepared{background:#991b1b;color:#fee2e2}
+    .b-sent-company-repair{background:#7c3aed;color:#ede9fe}
     .b-part-pending{background:#0f766e;color:#ccfbf1}
     .b-used{background:#14532d;color:#dcfce7}
     .b-return-requested{background:#92400e;color:#fef3c7}
@@ -442,6 +443,7 @@
       completions: [],
       deviceMissingParts: {},
       deviceReturnRequests: [],
+      deviceCompanyRepairTransfers: {},
       counters: { receipt: 1 }
     };
 
@@ -886,6 +888,7 @@ const APP_CONFIG = {
         users: Array.isArray(db.users) && db.users.length ? db.users : structuredClone(DEFAULT_DB.users),
         deviceMissingParts: sanitizeMissingPartsMap(db.deviceMissingParts || {}),
         deviceReturnRequests: sanitizeDeviceReturnRequests(db.deviceReturnRequests || []),
+        deviceCompanyRepairTransfers: sanitizeDeviceCompanyRepairTransfersMap(db.deviceCompanyRepairTransfers || {}),
         counters: db.counters || { receipt: 1 }
       };
     }
@@ -945,6 +948,30 @@ const APP_CONFIG = {
         .sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
     }
 
+    function normalizeDeviceCompanyRepairTransferEntry(value){
+      if(!value || typeof value !== 'object') return null;
+      const safe = value;
+      return {
+        note: String(safe.note || '').trim(),
+        sentBy: String(safe.sentBy || '').trim(),
+        sentAt: safe.sentAt || null,
+        companyHandledBy: String(safe.companyHandledBy || '').trim(),
+        companyHandledAt: safe.companyHandledAt || null,
+        companyDecision: String(safe.companyDecision || '').trim(),
+        companyDecisionNote: String(safe.companyDecisionNote || '').trim()
+      };
+    }
+
+    function sanitizeDeviceCompanyRepairTransfersMap(value){
+      const safe = value && typeof value === 'object' ? value : {};
+      const result = {};
+      Object.keys(safe).forEach(deviceId => {
+        const normalized = normalizeDeviceCompanyRepairTransferEntry(safe[deviceId]);
+        if(normalized) result[deviceId] = normalized;
+      });
+      return result;
+    }
+
     function sanitizeRemoteMetaPayload(payload){
       const safe = payload && typeof payload === 'object' ? payload : {};
       const safeUsers = Array.isArray(safe.users)
@@ -963,6 +990,7 @@ const APP_CONFIG = {
         users: safeUsers.length ? safeUsers : structuredClone(DEFAULT_DB.users),
         deviceMissingParts: sanitizeMissingPartsMap(safe.deviceMissingParts || {}),
         deviceReturnRequests: sanitizeDeviceReturnRequests(safe.deviceReturnRequests || []),
+        deviceCompanyRepairTransfers: sanitizeDeviceCompanyRepairTransfersMap(safe.deviceCompanyRepairTransfers || {}),
         counters: safe.counters && typeof safe.counters === 'object' ? safe.counters : { receipt: 1 }
       };
     }
@@ -1408,6 +1436,7 @@ const APP_CONFIG = {
           db.users = payload.users || structuredClone(DEFAULT_DB.users);
           db.deviceMissingParts = sanitizeMissingPartsMap(payload.deviceMissingParts || {});
           db.deviceReturnRequests = sanitizeDeviceReturnRequests(payload.deviceReturnRequests || []);
+          db.deviceCompanyRepairTransfers = sanitizeDeviceCompanyRepairTransfersMap(payload.deviceCompanyRepairTransfers || {});
           db.counters = { ...(db.counters || {}), ...(payload.counters || {}) };
           saveDB(true);
           if(currentUser) renderAll();
@@ -1529,6 +1558,7 @@ const APP_CONFIG = {
           users: remoteMeta.users || structuredClone(DEFAULT_DB.users),
           deviceMissingParts: sanitizeMissingPartsMap(remoteMeta.deviceMissingParts || {}),
           deviceReturnRequests: sanitizeDeviceReturnRequests(remoteMeta.deviceReturnRequests || []),
+          deviceCompanyRepairTransfers: sanitizeDeviceCompanyRepairTransfersMap(remoteMeta.deviceCompanyRepairTransfers || {}),
           devices,
           supplyRequests,
           partSlips,
@@ -1823,6 +1853,7 @@ const deviceStatusMap = {
       await_approval: {label:'انتظار موافقة الزبون', cls:'b-await-approval'},
       await_parts: {label:'انتظار قطع غيار', cls:'b-await-parts'},
       complete: {label:'مكتمل', cls:'b-complete'},
+      sent_to_company_repair: {label:'مرسل للشركة للتصليح', cls:'b-sent-company-repair'},
       delivered_company: {label:'تم إرساله للشركة', cls:'b-pending'},
       delivered_customer: {label:'تم تسليمه للزبون', cls:'b-delivered'},
       delivered: {label:'تم التسليم', cls:'b-delivered'},
@@ -1860,6 +1891,7 @@ const deviceStatusMap = {
         await_approval: 'قيد الصيانة',
         await_parts: 'قيد الصيانة',
         complete: 'تم التصليح',
+        sent_to_company_repair: 'مرسل للشركة للتصليح',
         delivered_company: 'تم إرساله للشركة للتسليم',
         delivered_customer: 'تم التسليم للزبون',
         delivered: 'تم التسليم',
@@ -3060,6 +3092,7 @@ function renderDevices(){
       const awaitApprovalCount = db.devices.filter(d => d.status === 'await_approval').length;
       const awaitPartsCount = db.devices.filter(d => d.status === 'await_parts').length;
       const deliveredCompanyCount = db.devices.filter(d => d.status === 'delivered_company').length;
+      const sentToCompanyRepairCount = db.devices.filter(d => d.status === 'sent_to_company_repair').length;
       const q = (deviceFilters.search || '').trim().toLowerCase();
 
       let quickResult = '';
@@ -3105,7 +3138,7 @@ function renderDevices(){
 
                 <div class="summary-card full">
                   <div class="k">ملاحظات</div>
-                  <div class="v">${escapeHtml(found.faultDescription || found.notRepairReason || '—')}</div>
+                  <div class="v">${escapeHtml(found.faultDescription || found.notRepairReason || getDeviceCompanyRepairTransferEntry(found.id)?.note || '—')}</div>
                 </div>
               </div>
 
@@ -3134,7 +3167,7 @@ function renderDevices(){
           <td>${escapeHtml(d.receivedBy || '—')}</td>
           <td>${escapeHtml(d.receiveDate || '—')}<br><span class="muted">${escapeHtml(d.receiveTime || '')}</span></td>
           <td><svg id="barcode_${d.id}"></svg></td>
-          <td>${d.status === 'not_repaired' ? `<span class="muted">${escapeHtml(d.notRepairReason || '—')}</span>` : '—'}</td>
+          <td>${d.status === 'not_repaired' ? `<span class="muted">${escapeHtml(d.notRepairReason || '—')}</span>` : d.status === 'sent_to_company_repair' ? `<span class="muted">${escapeHtml(getDeviceCompanyRepairTransferEntry(d.id)?.note || '—')}</span>` : '—'}</td>
           <td>
             <div class="actions">
               <button class="small secondary" onclick="showDeviceSummaryByReceipt('${escapeJs(d.receiptNumber || '')}')">حالة الجهاز</button>
@@ -3142,6 +3175,7 @@ function renderDevices(){
                 <button class="small secondary" onclick="editDeviceMissingParts('${d.id}')">نواقص قطع الغيار</button>
                 <button class="small info" onclick="setDeviceStatus('${d.id}','await_approval')">انتظار موافقة</button>
                 <button class="small warning" onclick="setDeviceStatus('${d.id}','await_parts')">انتظار قطع</button>
+                ${d.status !== 'sent_to_company_repair' ? `<button class="small gray" onclick="sendDeviceToCompanyRepair('${d.id}')">إرسال للشركة للتصليح</button>` : ''}
                 <button class="small danger" onclick="markDeviceNotRepaired('${d.id}')">لم يتم التصليح</button>
               ` : ''}
               <button class="small secondary" onclick="printReceipt('${d.id}')">طباعة الوصل</button>
@@ -3173,6 +3207,7 @@ function renderDevices(){
             <option value="await_approval" ${deviceFilters.type === 'await_approval' ? 'selected' : ''}>انتظار موافقة الزبون (${awaitApprovalCount})</option>
             <option value="await_parts" ${deviceFilters.type === 'await_parts' ? 'selected' : ''}>انتظار قطع (${awaitPartsCount})</option>
             <option value="complete" ${deviceFilters.type === 'complete' ? 'selected' : ''}>مكتمل (${completeCount})</option>
+            <option value="sent_to_company_repair" ${deviceFilters.type === 'sent_to_company_repair' ? 'selected' : ''}>مرسل للشركة للتصليح (${sentToCompanyRepairCount})</option>
             <option value="delivered_company" ${deviceFilters.type === 'delivered_company' ? 'selected' : ''}>تم إرساله للشركة (${deliveredCompanyCount})</option>
             <option value="delivered" ${deviceFilters.type === 'delivered' ? 'selected' : ''}>تم التسليم (${deliveredCount})</option>
             <option value="not_repaired" ${deviceFilters.type === 'not_repaired' ? 'selected' : ''}>لم يتم التصليح (${notRepairedCount})</option>
@@ -3580,6 +3615,7 @@ window.addEventListener('load', function(){
           case 'overdue': typeMatch = isOverdue; break;
           case 'not_repaired': typeMatch = d.status === 'not_repaired'; break;
           case 'complete': typeMatch = d.status === 'complete'; break;
+          case 'sent_to_company_repair': typeMatch = d.status === 'sent_to_company_repair'; break;
           case 'delivered_company': typeMatch = d.status === 'delivered_company'; break;
           case 'delivered': typeMatch = d.status === 'delivered'; break;
           case 'received': typeMatch = d.status === 'received'; break;
@@ -3910,6 +3946,94 @@ window.addEventListener('load', function(){
       };
     }
 
+    function getDeviceCompanyRepairTransferEntry(deviceId){
+      return normalizeDeviceCompanyRepairTransferEntry((db.deviceCompanyRepairTransfers || {})[deviceId]) || null;
+    }
+
+    function setDeviceCompanyRepairTransferEntry(deviceId, patch = null){
+      db.deviceCompanyRepairTransfers = sanitizeDeviceCompanyRepairTransfersMap(db.deviceCompanyRepairTransfers || {});
+      if(patch){
+        const current = getDeviceCompanyRepairTransferEntry(deviceId) || {};
+        db.deviceCompanyRepairTransfers[deviceId] = normalizeDeviceCompanyRepairTransferEntry({ ...current, ...patch }) || current;
+      }else{
+        delete db.deviceCompanyRepairTransfers[deviceId];
+      }
+      saveDB();
+    }
+
+    async function sendDeviceToCompanyRepair(deviceId){
+      const device = db.devices.find(d => d.id === deviceId);
+      if(!device) return;
+      const note = prompt('اكتب سبب إرسال الجهاز إلى الشركة للتصليح الخاص:');
+      if(note === null) return;
+      const cleanNote = String(note || '').trim();
+      if(!cleanNote){
+        alert('يجب كتابة سبب الإرسال');
+        return;
+      }
+      setDeviceCompanyRepairTransferEntry(deviceId, {
+        note: cleanNote,
+        sentBy: currentUser ? currentUser.fullName : '—',
+        sentAt: nowISO(),
+        companyHandledBy: '',
+        companyHandledAt: null,
+        companyDecision: '',
+        companyDecisionNote: ''
+      });
+      await updateDeviceStatus(deviceId, 'sent_to_company_repair');
+      renderAll();
+      alert('تم إرسال الجهاز إلى الشركة للتصليح');
+    }
+
+    async function handleCompanyRepairDevice(deviceId, action){
+      const device = db.devices.find(d => d.id === deviceId);
+      if(!device) return;
+      const baseEntry = getDeviceCompanyRepairTransferEntry(deviceId) || {};
+      let nextStatus = 'received';
+      let message = 'تم تحديث الجهاز';
+      let decision = '';
+      let decisionNote = '';
+
+      if(action === 'return_to_technician'){
+        nextStatus = 'received';
+        decision = 'return_to_technician';
+        decisionNote = prompt('ملاحظة الإرجاع إلى الصيانة (اختياري):') || '';
+        message = 'تم إرجاع الجهاز إلى الصيانة';
+      }else if(action === 'completed_by_company'){
+        nextStatus = 'complete';
+        decision = 'completed_by_company';
+        decisionNote = prompt('ملاحظة التصليح من الشركة (اختياري):') || '';
+        message = 'تم تسجيل الجهاز كمكتمل';
+      }else if(action === 'not_repaired'){
+        nextStatus = 'not_repaired';
+        decision = 'not_repaired';
+        decisionNote = prompt('سبب تعذر التصليح:');
+        if(decisionNote === null) return;
+        decisionNote = String(decisionNote || '').trim();
+        if(!decisionNote){
+          alert('يجب كتابة سبب التعذر');
+          return;
+        }
+        message = 'تم تسجيل الجهاز كمتعذر التصليح';
+      }else{
+        return;
+      }
+
+      setDeviceCompanyRepairTransferEntry(deviceId, {
+        ...baseEntry,
+        companyHandledBy: currentUser ? currentUser.fullName : '—',
+        companyHandledAt: nowISO(),
+        companyDecision: decision,
+        companyDecisionNote: decisionNote
+      });
+
+      const patch = {};
+      if(nextStatus === 'not_repaired') patch.notRepairReason = decisionNote;
+      await updateDeviceStatus(deviceId, nextStatus, patch);
+      renderAll();
+      alert(message);
+    }
+
     function renderCompany(){
       const companyRequests = (Array.isArray(db.supplyRequests) ? db.supplyRequests : [])
         .map(normalizeCompanyRequestRow)
@@ -3955,6 +4079,30 @@ window.addEventListener('load', function(){
           </td>
         </tr>
       `).join('');
+
+      const companyRepairRows = db.devices
+        .filter(d => d.status === 'sent_to_company_repair')
+        .map(d => {
+          const transfer = getDeviceCompanyRepairTransferEntry(d.id) || {};
+          return `
+          <tr>
+            <td>${escapeHtml(d.receiptNumber)}</td>
+            <td>${escapeHtml(d.customerName)}</td>
+            <td>${escapeHtml(d.deviceType)}</td>
+            <td>${escapeHtml(transfer.note || '—')}</td>
+            <td>${escapeHtml(transfer.sentBy || '—')}</td>
+            <td>${formatDateTime(transfer.sentAt)}</td>
+            <td>${badge(deviceStatusMap, d.status)}</td>
+            <td>
+              <div class="actions">
+                <button class="small secondary" onclick="handleCompanyRepairDevice('${d.id}','return_to_technician')">إرجاع للصيانة</button>
+                <button class="small info" onclick="handleCompanyRepairDevice('${d.id}','completed_by_company')">تم التصليح</button>
+                <button class="small danger" onclick="handleCompanyRepairDevice('${d.id}','not_repaired')">تعذر التصليح</button>
+              </div>
+            </td>
+          </tr>
+        `;
+        }).join('');
 
       const companyDeliveryRows = db.devices
         .filter(d => d.status === 'delivered_company')
@@ -4018,6 +4166,32 @@ window.addEventListener('load', function(){
               </tr>
             </thead>
             <tbody>${missingPartsRows || `<tr><td colspan="7" class="muted">لا توجد نواقص قطع غيار حالياً</td></tr>`}</tbody>
+          </table>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <div class="section-title">
+          <div>
+            <h2>أجهزة واردة من الصيانة للتصليح</h2>
+            <p>أجهزة تم تحويلها من فني الصيانة إلى الشركة لإجراء تصليح خاص</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>رقم الوصل</th>
+                <th>الزبون</th>
+                <th>الجهاز</th>
+                <th>سبب الإرسال</th>
+                <th>أرسل بواسطة</th>
+                <th>وقت الإرسال</th>
+                <th>الحالة</th>
+                <th>إجراء</th>
+              </tr>
+            </thead>
+            <tbody>${companyRepairRows || `<tr><td colspan="8" class="muted">لا توجد أجهزة واردة من الصيانة للتصليح</td></tr>`}</tbody>
           </table>
         </div>
 
@@ -4103,6 +4277,21 @@ window.addEventListener('load', function(){
           </td>
         </tr>
       `).join('');
+      const companyRepairRows = db.devices
+        .filter(d => ['received','await_approval','await_parts'].includes(d.status))
+        .map(d => {
+          const transfer = getDeviceCompanyRepairTransferEntry(d.id) || {};
+          return `
+          <tr>
+            <td>${escapeHtml(d.receiptNumber)}</td>
+            <td>${escapeHtml(d.customerName)}</td>
+            <td>${escapeHtml(d.deviceType)}</td>
+            <td>${badge(deviceStatusMap, d.status)}</td>
+            <td>${escapeHtml(transfer.note || '—')}</td>
+            <td><button class="small secondary" onclick="sendDeviceToCompanyRepair('${d.id}')">إرسال إلى الشركة للتصليح</button></td>
+          </tr>
+        `;
+        }).join('');
       document.getElementById('technicianSection').innerHTML = `
         <div class="section-title">
           <div>
@@ -4125,6 +4314,28 @@ window.addEventListener('load', function(){
               </tr>
             </thead>
             <tbody>${rows || `<tr><td colspan="8" class="muted">لا توجد وصولات معلقة</td></tr>`}</tbody>
+          </table>
+        </div>
+
+        <div class="section-title" style="margin-top:18px">
+          <div>
+            <h2>إرسال أجهزة إلى الشركة لتصليح خاص</h2>
+            <p>يستخدمها فني الصيانة عندما يحتاج الجهاز تصليحاً معيناً لدى الشركة</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>رقم الوصل</th>
+                <th>الزبون</th>
+                <th>الجهاز</th>
+                <th>الحالة الحالية</th>
+                <th>آخر سبب إرسال</th>
+                <th>إجراء</th>
+              </tr>
+            </thead>
+            <tbody>${companyRepairRows || `<tr><td colspan="6" class="muted">لا توجد أجهزة قابلة للإرسال حالياً</td></tr>`}</tbody>
           </table>
         </div>
       `;
