@@ -453,7 +453,41 @@
     
     const MAINTENANCE_PHONE = "07742228831";
 
-    const DEVICE_BRANDS = ['iphone','samsung','huawie','huawei','honor','redmi','realme','oppo','vivo','infinix','tecno','moto','motorola','allcall','alcatel','LG','hisense','hisens','blackview','doogee','dooge','nokia','TCL','zte','wiko','lenovo','poco','mi','redmagic'];
+    const DEVICE_BRANDS = ['iphone','samsung','xiaomi','redmi','mi','poco','huawie','huawei','honor','realme','oppo','vivo','infinix','tecno','moto','motorola','allcall','alcatel','LG','hisense','hisens','blackview','doogee','dooge','nokia','TCL','zte','wiko','lenovo','redmagic'];
+    const DEVICE_BRAND_ALIASES = {
+      huawie: 'huawei',
+      iphone: 'iphone',
+      ios: 'iphone',
+      xiaomi: 'xiaomi',
+      redmi: 'redmi',
+      mi: 'mi',
+      poco: 'poco',
+      lg: 'LG',
+      tcl: 'TCL'
+    };
+    const DEVICE_MODEL_CATALOG = {
+      iphone: [
+        'iphone 6','iphone 6 Plus','iphone 6s','iphone 6s Plus','iphone 7','iphone 7 Plus','iphone 8','iphone 8 Plus','iphone X','iphone XR','iphone XS','iphone XS Max',
+        'iphone 11','iphone 11 Pro','iphone 11 Pro Max','iphone SE 2020',
+        'iphone 12 mini','iphone 12','iphone 12 Pro','iphone 12 Pro Max','iphone 13 mini','iphone 13','iphone 13 Pro','iphone 13 Pro Max',
+        'iphone SE 2022','iphone 14','iphone 14 Plus','iphone 14 Pro','iphone 14 Pro Max','iphone 15','iphone 15 Plus','iphone 15 Pro','iphone 15 Pro Max',
+        'iphone 16','iphone 16 Plus','iphone 16 Pro','iphone 16 Pro Max','iphone 16e'
+      ],
+      xiaomi: [
+        'xiaomi 11 Lite','xiaomi 11T','xiaomi 11T Pro','xiaomi 12','xiaomi 12 Lite','xiaomi 12T','xiaomi 12T Pro','xiaomi 13','xiaomi 13 Lite','xiaomi 13T','xiaomi 13T Pro','xiaomi 14','xiaomi 14T','xiaomi 14T Pro','xiaomi 15'
+      ],
+      redmi: [
+        'redmi A1','redmi A2','redmi A3','redmi A3x','redmi A4','redmi 9','redmi 10','redmi 10A','redmi 12','redmi 13',
+        'redmi Note 8','redmi Note 8 Pro','redmi Note 9','redmi Note 9S','redmi Note 9 Pro','redmi Note 10','redmi Note 10S','redmi Note 10 Pro','redmi Note 11','redmi Note 11S','redmi Note 11 Pro','redmi Note 12','redmi Note 12 Pro','redmi Note 13','redmi Note 13 Pro','redmi Note 14','redmi Note 14 Pro',
+        'redmi K40','redmi K50','redmi K60','redmi K70'
+      ],
+      mi: [
+        'mi A1','mi A2','mi A2 Lite','mi A3','mi 9','mi 10','mi 10T','mi 10T Pro','mi 11 Lite','mi 11','mi 11 Ultra','mi Note 10'
+      ],
+      poco: [
+        'poco C40','poco C65','poco M3','poco M4 Pro','poco M5','poco X3','poco X3 Pro','poco X4 Pro','poco X5','poco X6','poco X6 Pro','poco F3','poco F4','poco F5','poco F6'
+      ]
+    };
     const SERIES_BRAND_HINTS = {
       a: ['samsung','oppo','blackview'],
       y: ['huawie','huawei','vivo'],
@@ -604,13 +638,21 @@
       return keys.filter(key => key.toLowerCase().startsWith(value)).slice(0, 20);
     }
 
+    function normalizeBrandName(brand=''){
+      const raw = String(brand || '').trim();
+      if(!raw) return '';
+      const mapped = DEVICE_BRAND_ALIASES[raw.toLowerCase()];
+      if(mapped) return mapped;
+      return DEVICE_BRANDS.find(b => b.toLowerCase() === raw.toLowerCase()) || raw;
+    }
+
     function normalizeBrandInput(value=''){
       const raw = String(value || '').trim();
       if(!raw) return '';
       const parts = raw.split(/\s+/).filter(Boolean);
       const first = parts[0] || '';
-      const matchedBrand = DEVICE_BRANDS.find(b => b.toLowerCase() === first.toLowerCase());
-      if(matchedBrand){
+      const matchedBrand = normalizeBrandName(first);
+      if(matchedBrand && DEVICE_BRANDS.some(b => b.toLowerCase() === matchedBrand.toLowerCase())){
         const rest = parts.slice(1).map((part, index) => index === 0 ? normalizeDeviceSeriesToken(part) : part);
         return [matchedBrand, ...rest].join(' ').trim();
       }
@@ -618,6 +660,28 @@
         return normalizeDeviceSeriesToken(parts[0]);
       }
       return [parts[0], normalizeDeviceSeriesToken(parts[1]), ...parts.slice(2)].join(' ').trim();
+    }
+
+    function getCatalogModelsByBrand(brand='', partial=''){
+      const normalizedBrand = normalizeBrandName(brand);
+      const list = DEVICE_MODEL_CATALOG[normalizedBrand] || [];
+      const query = normalizeArabicText(String(partial || '').trim());
+      const seen = new Set();
+      return list
+        .filter(name => {
+          if(!query) return true;
+          const normalizedName = normalizeArabicText(name);
+          const brandPrefix = normalizeArabicText(normalizedBrand + ' ');
+          const shortName = normalizedName.startsWith(brandPrefix) ? normalizedName.slice(brandPrefix.length) : normalizedName;
+          return normalizedName.includes(query) || shortName.startsWith(query) || shortName.includes(query);
+        })
+        .filter(name => {
+          const key = String(name).toLowerCase();
+          if(seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, query ? 30 : 18);
     }
 
     function getKnownDeviceModelsByBrand(brand=''){
@@ -684,19 +748,41 @@
       const first = parts[0] || '';
       const brandOptions = DEVICE_BRANDS.map(b => `<option value="${escapeHtml(b)} " ></option>`);
       if(!first) return brandOptions.join('');
-      const matchedBrand = DEVICE_BRANDS.find(b => b.toLowerCase() === first.toLowerCase());
-      if(matchedBrand){
+      const matchedBrand = normalizeBrandName(first);
+      if(matchedBrand && DEVICE_BRANDS.some(b => b.toLowerCase() === matchedBrand.toLowerCase())){
+        const typedModel = parts.slice(1).join(' ').trim();
+        const catalogOptions = getCatalogModelsByBrand(matchedBrand, typedModel).map(name => `<option value="${escapeHtml(name)}"></option>`);
         const modelOptions = getKnownDeviceModelsByBrand(matchedBrand).map(name => `<option value="${escapeHtml(name)}"></option>`);
         const second = parts[1] || '';
-        const seriesOptions = second ? buildSeriesHintOptions(second).map(name => `<option value="${escapeHtml(name)}"></option>`) : [];
-        const aliasOptions = second ? getAliasModelSuggestions(second)
-          .filter(name => name.toLowerCase().startsWith(matchedBrand.toLowerCase() + ' '))
+        const seriesOptions = second ? buildSeriesHintOptions(second)
+          .filter(name => normalizeBrandName(String(name).split(/\s+/)[0]) === matchedBrand)
           .map(name => `<option value="${escapeHtml(name)}"></option>`) : [];
-        return [...brandOptions, ...aliasOptions, ...seriesOptions, ...modelOptions].join('');
+        const aliasOptions = second ? getAliasModelSuggestions(second)
+          .filter(name => normalizeBrandName(String(name).split(/\s+/)[0]) === matchedBrand)
+          .map(name => `<option value="${escapeHtml(name)}"></option>`) : [];
+        const deduped = [];
+        const seen = new Set();
+        [...catalogOptions, ...aliasOptions, ...seriesOptions, ...modelOptions, ...brandOptions].forEach(item => {
+          if(seen.has(item)) return;
+          seen.add(item);
+          deduped.push(item);
+        });
+        return deduped.join('');
       }
       const aliasOptions = getAliasModelSuggestions(first).map(name => `<option value="${escapeHtml(name)}"></option>`);
       const seriesOptions = buildSeriesHintOptions(first).map(name => `<option value="${escapeHtml(name)}"></option>`);
-      return [...aliasOptions, ...seriesOptions, ...brandOptions].join('');
+      const crossBrandCatalog = Object.keys(DEVICE_MODEL_CATALOG)
+        .flatMap(brand => getCatalogModelsByBrand(brand, first))
+        .slice(0, 30)
+        .map(name => `<option value="${escapeHtml(name)}"></option>`);
+      const deduped = [];
+      const seen = new Set();
+      [...aliasOptions, ...seriesOptions, ...crossBrandCatalog, ...brandOptions].forEach(item => {
+        if(seen.has(item)) return;
+        seen.add(item);
+        deduped.push(item);
+      });
+      return deduped.join('');
     }
 
     const RECEIPT_NOTE = "يسقط حق المطالبة بالجهاز بعد شهر من اكمال تصليح الجهاز";
@@ -2567,7 +2653,7 @@ function renderShopReceive(){
         <form class="grid grid-2" onsubmit="createDevice(event)">
           <div><label>اسم الزبون</label><input id="customerName" required /></div>
           <div><label>رقم الهاتف</label><input id="phone" required /></div>
-          <div><label>نوع الجهاز</label><input id="deviceType" list="deviceBrandList" placeholder="مثال: samsung A55 أو iphone 12" oninput="handleDeviceTypeInput(this)" required /><datalist id="deviceBrandList" data-owner-id="deviceType"></datalist><div class="hint">ابدأ باسم الشركة أولاً ثم الموديل. أمثلة ذكية: A / Y / note / spark / hot / zero / camon / reno</div></div>
+          <div><label>نوع الجهاز</label><input id="deviceType" list="deviceBrandList" placeholder="مثال: iphone 11 أو redmi note 13 أو mi a3" oninput="handleDeviceTypeInput(this)" required /><datalist id="deviceBrandList" data-owner-id="deviceType"></datalist><div class="hint">اقتراحات ذكية موسعة: iPhone 11 / 11 Pro / 11 Pro Max و Xiaomi / Redmi / Mi مثل A3 و Note وغيرها</div></div>
           <div><label>لون الجهاز</label><input id="deviceColor" placeholder="مثال: أسود / أبيض / أزرق" required /></div>
           <div><label>اسم الموظف المستلم</label><input id="receivedBy" placeholder="يكتب الموظف اسمه هنا" autocomplete="off" /></div>
           <div style="grid-column:1/-1"><label>العطل</label><textarea id="faultDescription" required></textarea></div>
