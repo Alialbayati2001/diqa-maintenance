@@ -453,11 +453,13 @@
     
     const MAINTENANCE_PHONE = "07742228831";
 
-    const DEVICE_BRANDS = ['iphone','samsung','xiaomi','redmi','mi','poco','huawie','huawei','honor','realme','oppo','vivo','infinix','tecno','moto','motorola','allcall','alcatel','LG','hisense','hisens','blackview','doogee','dooge','nokia','TCL','zte','wiko','lenovo','redmagic'];
+    const DEVICE_BRANDS = ['iphone','ipad','samsung','xiaomi','redmi','mi','poco','huawie','huawei','honor','realme','oppo','vivo','infinix','tecno','moto','motorola','allcall','alcatel','LG','hisense','hisens','blackview','doogee','dooge','nokia','TCL','zte','wiko','lenovo','redmagic'];
     const DEVICE_BRAND_ALIASES = {
       huawie: 'huawei',
       iphone: 'iphone',
       ios: 'iphone',
+      ipad: 'ipad',
+      tablet: 'ipad',
       xiaomi: 'xiaomi',
       redmi: 'redmi',
       mi: 'mi',
@@ -473,19 +475,35 @@
         'iphone SE 2022','iphone 14','iphone 14 Plus','iphone 14 Pro','iphone 14 Pro Max','iphone 15','iphone 15 Plus','iphone 15 Pro','iphone 15 Pro Max',
         'iphone 16','iphone 16 Plus','iphone 16 Pro','iphone 16 Pro Max','iphone 16e'
       ],
+      ipad: [
+        'ipad 6','ipad 7','ipad 8','ipad 9','ipad 10','ipad 10.9','ipad Air 4','ipad Air 5','ipad Air 11 M2','ipad Air 13 M2','ipad Mini 6','ipad Pro 11','ipad Pro 12.9'
+      ],
+      samsung: [
+        'samsung Tab A7','samsung Tab A8 X200','samsung Tab A8 X205','samsung Tab A9','samsung Tab A9 Plus','samsung Tab S6 Lite','samsung Tab S7 FE','samsung Tab S8','samsung Tab S9','samsung Tab S9 FE'
+      ],
       xiaomi: [
-        'xiaomi 11 Lite','xiaomi 11T','xiaomi 11T Pro','xiaomi 12','xiaomi 12 Lite','xiaomi 12T','xiaomi 12T Pro','xiaomi 13','xiaomi 13 Lite','xiaomi 13T','xiaomi 13T Pro','xiaomi 14','xiaomi 14T','xiaomi 14T Pro','xiaomi 15'
+        'xiaomi 11 Lite','xiaomi 11T','xiaomi 11T Pro','xiaomi 12','xiaomi 12 Lite','xiaomi 12T','xiaomi 12T Pro','xiaomi 13','xiaomi 13 Lite','xiaomi 13T','xiaomi 13T Pro','xiaomi 14','xiaomi 14T','xiaomi 14T Pro','xiaomi 15',
+        'xiaomi Pad 5','xiaomi Pad 6','xiaomi Pad 6S Pro'
       ],
       redmi: [
         'redmi A1','redmi A2','redmi A3','redmi A3x','redmi A4','redmi 9','redmi 10','redmi 10A','redmi 12','redmi 13',
         'redmi Note 8','redmi Note 8 Pro','redmi Note 9','redmi Note 9S','redmi Note 9 Pro','redmi Note 10','redmi Note 10S','redmi Note 10 Pro','redmi Note 11','redmi Note 11S','redmi Note 11 Pro','redmi Note 12','redmi Note 12 Pro','redmi Note 13','redmi Note 13 Pro','redmi Note 14','redmi Note 14 Pro',
-        'redmi K40','redmi K50','redmi K60','redmi K70'
+        'redmi K40','redmi K50','redmi K60','redmi K70','redmi Pad','redmi Pad SE','redmi Pad SE 11 inch','redmi Pad SE 8.7 inch','redmi Pad Pro'
       ],
       mi: [
-        'mi A1','mi A2','mi A2 Lite','mi A3','mi 9','mi 10','mi 10T','mi 10T Pro','mi 11 Lite','mi 11','mi 11 Ultra','mi Note 10'
+        'mi A1','mi A2','mi A2 Lite','mi A3','mi 9','mi 10','mi 10T','mi 10T Pro','mi 11 Lite','mi 11','mi 11 Ultra','mi Note 10','mi Pad 5'
       ],
       poco: [
-        'poco C40','poco C65','poco M3','poco M4 Pro','poco M5','poco X3','poco X3 Pro','poco X4 Pro','poco X5','poco X6','poco X6 Pro','poco F3','poco F4','poco F5','poco F6'
+        'poco C40','poco C65','poco M3','poco M4 Pro','poco M5','poco X3','poco X3 Pro','poco X4 Pro','poco X5','poco X6','poco X6 Pro','poco F3','poco F4','poco F5','poco F6','poco Pad'
+      ],
+      blackview: [
+        'blackview Tab 7','blackview Tab 8','blackview Tab 11','blackview Tab 12','blackview Tab 15','blackview Tab 16','blackview Tab 16 Pro','blackview Tab 18'
+      ],
+      honor: [
+        'honor Pad X8','honor Pad X8a','honor Pad X9','honor Pad 9'
+      ],
+      infinix: [
+        'infinix X Pad','infinix Xpad'
       ]
     };
     const SERIES_BRAND_HINTS = {
@@ -518,6 +536,10 @@
       gt: ['realme','infinix'],
       civi: ['mi'],
       xiaomi: ['mi'],
+      tab: ['samsung','blackview'],
+      ipad: ['ipad'],
+      pad: ['redmi','honor','xiaomi','infinix'],
+      xpad: ['infinix'],
       g: ['moto','nokia'],
       e: ['moto','nokia'],
       v: ['vivo','LG'],
@@ -610,7 +632,16 @@
       j: ['samsung J7','samsung J8'],
       core: ['samsung Core Prime'],
       smart: ['infinix Smart 7','infinix Smart 8','tecno Spark Go'],
-      civi: ['mi Civi','mi Civi 2','mi Civi 4 Pro']
+      civi: ['mi Civi','mi Civi 2','mi Civi 4 Pro'],
+      ipad: ['ipad 9','ipad 10','ipad Air 5','ipad Pro 11'],
+      tab: ['blackview Tab 16','blackview Tab 16 Pro','samsung Tab A8 X200','samsung Tab A9','samsung Tab S9'],
+      pad: ['redmi Pad','redmi Pad SE','redmi Pad SE 11 inch','redmi Pad SE 8.7 inch','honor Pad X8','honor Pad X9','xiaomi Pad 6','infinix X Pad'],
+      xpad: ['infinix X Pad'],
+      'tab a8': ['samsung Tab A8 X200','samsung Tab A8 X205'],
+      x200: ['samsung Tab A8 X200'],
+      'pad se': ['redmi Pad SE','redmi Pad SE 11 inch','redmi Pad SE 8.7 inch'],
+      'pad x8': ['honor Pad X8'],
+      'tab 16': ['blackview Tab 16','blackview Tab 16 Pro']
     };
 
     function normalizeDeviceSeriesToken(token=''){
@@ -2653,7 +2684,7 @@ function renderShopReceive(){
         <form class="grid grid-2" onsubmit="createDevice(event)">
           <div><label>اسم الزبون</label><input id="customerName" required /></div>
           <div><label>رقم الهاتف</label><input id="phone" required /></div>
-          <div><label>نوع الجهاز</label><input id="deviceType" list="deviceBrandList" placeholder="مثال: iphone 11 أو redmi note 13 أو mi a3" oninput="handleDeviceTypeInput(this)" required /><datalist id="deviceBrandList" data-owner-id="deviceType"></datalist><div class="hint">اقتراحات ذكية موسعة: iPhone 11 / 11 Pro / 11 Pro Max و Xiaomi / Redmi / Mi مثل A3 و Note وغيرها</div></div>
+          <div><label>نوع الجهاز</label><input id="deviceType" list="deviceBrandList" placeholder="مثال: iphone 11 أو redmi note 13 أو mi a3 أو ipad 10" oninput="handleDeviceTypeInput(this)" required /><datalist id="deviceBrandList" data-owner-id="deviceType"></datalist><div class="hint">اقتراحات ذكية موسعة: iPhone و Xiaomi/Redmi/Mi وكذلك الأجهزة اللوحية مثل iPad 10 و Samsung Tab A8 X200 و Blackview Tab 16 Pro و Redmi Pad SE و Infinix X Pad و Honor Pad X8</div></div>
           <div><label>لون الجهاز</label><input id="deviceColor" placeholder="مثال: أسود / أبيض / أزرق" required /></div>
           <div><label>اسم الموظف المستلم</label><input id="receivedBy" placeholder="يكتب الموظف اسمه هنا" autocomplete="off" /></div>
           <div style="grid-column:1/-1"><label>العطل</label><textarea id="faultDescription" required></textarea></div>
