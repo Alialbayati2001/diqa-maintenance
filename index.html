@@ -1854,6 +1854,8 @@ const deviceStatusMap = {
       await_parts: {label:'انتظار قطع غيار', cls:'b-await-parts'},
       complete: {label:'مكتمل', cls:'b-complete'},
       sent_to_company_repair: {label:'مرسل للشركة للتصليح', cls:'b-sent-company-repair'},
+      company_received_repair: {label:'تم استلام الجهاز', cls:'b-sent-company-repair'},
+      returned_to_technician_pending_receive: {label:'مرسل من الشركة إلى الصيانة', cls:'b-pending'},
       delivered_company: {label:'تم إرساله للشركة', cls:'b-pending'},
       delivered_customer: {label:'تم تسليمه للزبون', cls:'b-delivered'},
       delivered: {label:'تم التسليم', cls:'b-delivered'},
@@ -1891,7 +1893,9 @@ const deviceStatusMap = {
         await_approval: 'قيد الصيانة',
         await_parts: 'قيد الصيانة',
         complete: 'تم التصليح',
-        sent_to_company_repair: 'مرسل للشركة للتصليح',
+        sent_to_company_repair: 'قيد الصيانة',
+        company_received_repair: 'قيد الصيانة',
+        returned_to_technician_pending_receive: 'قيد الصيانة',
         delivered_company: 'تم إرساله للشركة للتسليم',
         delivered_customer: 'تم التسليم للزبون',
         delivered: 'تم التسليم',
@@ -3092,7 +3096,7 @@ function renderDevices(){
       const awaitApprovalCount = db.devices.filter(d => d.status === 'await_approval').length;
       const awaitPartsCount = db.devices.filter(d => d.status === 'await_parts').length;
       const deliveredCompanyCount = db.devices.filter(d => d.status === 'delivered_company').length;
-      const sentToCompanyRepairCount = db.devices.filter(d => d.status === 'sent_to_company_repair').length;
+      const sentToCompanyRepairCount = db.devices.filter(d => ['sent_to_company_repair','company_received_repair','returned_to_technician_pending_receive'].includes(d.status)).length;
       const q = (deviceFilters.search || '').trim().toLowerCase();
 
       let quickResult = '';
@@ -3167,7 +3171,7 @@ function renderDevices(){
           <td>${escapeHtml(d.receivedBy || '—')}</td>
           <td>${escapeHtml(d.receiveDate || '—')}<br><span class="muted">${escapeHtml(d.receiveTime || '')}</span></td>
           <td><svg id="barcode_${d.id}"></svg></td>
-          <td>${d.status === 'not_repaired' ? `<span class="muted">${escapeHtml(d.notRepairReason || '—')}</span>` : d.status === 'sent_to_company_repair' ? `<span class="muted">${escapeHtml(getDeviceCompanyRepairTransferEntry(d.id)?.note || '—')}</span>` : '—'}</td>
+          <td>${d.status === 'not_repaired' ? `<span class="muted">${escapeHtml(d.notRepairReason || '—')}</span>` : ['sent_to_company_repair','company_received_repair','returned_to_technician_pending_receive'].includes(d.status) ? `<span class="muted">${escapeHtml(getDeviceCompanyRepairTransferEntry(d.id)?.note || '—')}</span>` : '—'}</td>
           <td>
             <div class="actions">
               <button class="small secondary" onclick="showDeviceSummaryByReceipt('${escapeJs(d.receiptNumber || '')}')">حالة الجهاز</button>
@@ -3175,7 +3179,7 @@ function renderDevices(){
                 <button class="small secondary" onclick="editDeviceMissingParts('${d.id}')">نواقص قطع الغيار</button>
                 <button class="small info" onclick="setDeviceStatus('${d.id}','await_approval')">انتظار موافقة</button>
                 <button class="small warning" onclick="setDeviceStatus('${d.id}','await_parts')">انتظار قطع</button>
-                ${d.status !== 'sent_to_company_repair' ? `<button class="small gray" onclick="sendDeviceToCompanyRepair('${d.id}')">إرسال للشركة للتصليح</button>` : ''}
+                ${!['sent_to_company_repair','company_received_repair','returned_to_technician_pending_receive'].includes(d.status) ? `<button class="small gray" onclick="sendDeviceToCompanyRepair('${d.id}')">إرسال للشركة للتصليح</button>` : ''}
                 <button class="small danger" onclick="markDeviceNotRepaired('${d.id}')">لم يتم التصليح</button>
               ` : ''}
               <button class="small secondary" onclick="printReceipt('${d.id}')">طباعة الوصل</button>
@@ -3207,7 +3211,7 @@ function renderDevices(){
             <option value="await_approval" ${deviceFilters.type === 'await_approval' ? 'selected' : ''}>انتظار موافقة الزبون (${awaitApprovalCount})</option>
             <option value="await_parts" ${deviceFilters.type === 'await_parts' ? 'selected' : ''}>انتظار قطع (${awaitPartsCount})</option>
             <option value="complete" ${deviceFilters.type === 'complete' ? 'selected' : ''}>مكتمل (${completeCount})</option>
-            <option value="sent_to_company_repair" ${deviceFilters.type === 'sent_to_company_repair' ? 'selected' : ''}>مرسل للشركة للتصليح (${sentToCompanyRepairCount})</option>
+            <option value="sent_to_company_repair" ${deviceFilters.type === 'sent_to_company_repair' ? 'selected' : ''}>تحويلات تصليح الشركة (${sentToCompanyRepairCount})</option>
             <option value="delivered_company" ${deviceFilters.type === 'delivered_company' ? 'selected' : ''}>تم إرساله للشركة (${deliveredCompanyCount})</option>
             <option value="delivered" ${deviceFilters.type === 'delivered' ? 'selected' : ''}>تم التسليم (${deliveredCount})</option>
             <option value="not_repaired" ${deviceFilters.type === 'not_repaired' ? 'selected' : ''}>لم يتم التصليح (${notRepairedCount})</option>
@@ -3615,7 +3619,7 @@ window.addEventListener('load', function(){
           case 'overdue': typeMatch = isOverdue; break;
           case 'not_repaired': typeMatch = d.status === 'not_repaired'; break;
           case 'complete': typeMatch = d.status === 'complete'; break;
-          case 'sent_to_company_repair': typeMatch = d.status === 'sent_to_company_repair'; break;
+          case 'sent_to_company_repair': typeMatch = ['sent_to_company_repair','company_received_repair','returned_to_technician_pending_receive'].includes(d.status); break;
           case 'delivered_company': typeMatch = d.status === 'delivered_company'; break;
           case 'delivered': typeMatch = d.status === 'delivered'; break;
           case 'received': typeMatch = d.status === 'received'; break;
@@ -3975,14 +3979,14 @@ window.addEventListener('load', function(){
         note: cleanNote,
         sentBy: currentUser ? currentUser.fullName : '—',
         sentAt: nowISO(),
-        companyHandledBy: '',
-        companyHandledAt: null,
-        companyDecision: '',
-        companyDecisionNote: ''
+        companyHandledBy: currentUser ? currentUser.fullName : '—',
+        companyHandledAt: nowISO(),
+        companyDecision: 'company_received_repair',
+        companyDecisionNote: 'تم استلام الجهاز في الشركة'
       });
-      await updateDeviceStatus(deviceId, 'sent_to_company_repair');
+      await updateDeviceStatus(deviceId, 'company_received_repair');
       renderAll();
-      alert('تم إرسال الجهاز إلى الشركة للتصليح');
+      alert('تم إرسال الجهاز إلى الشركة وظهر لديها كتم استلام الجهاز');
     }
 
     async function handleCompanyRepairDevice(deviceId, action){
@@ -3995,10 +3999,10 @@ window.addEventListener('load', function(){
       let decisionNote = '';
 
       if(action === 'return_to_technician'){
-        nextStatus = 'received';
+        nextStatus = 'returned_to_technician_pending_receive';
         decision = 'return_to_technician';
         decisionNote = prompt('ملاحظة الإرجاع إلى الصيانة (اختياري):') || '';
-        message = 'تم إرجاع الجهاز إلى الصيانة';
+        message = 'تم تسليم الجهاز من الشركة إلى الصيانة وبانتظار تأكيد الاستلام';
       }else if(action === 'completed_by_company'){
         nextStatus = 'complete';
         decision = 'completed_by_company';
@@ -4032,6 +4036,22 @@ window.addEventListener('load', function(){
       await updateDeviceStatus(deviceId, nextStatus, patch);
       renderAll();
       alert(message);
+    }
+
+    async function confirmTechnicianReceiveFromCompanyRepair(deviceId){
+      const device = db.devices.find(d => d.id === deviceId);
+      if(!device) return;
+      const baseEntry = getDeviceCompanyRepairTransferEntry(deviceId) || {};
+      setDeviceCompanyRepairTransferEntry(deviceId, {
+        ...baseEntry,
+        technicianReceivedBy: currentUser ? currentUser.fullName : '—',
+        technicianReceivedAt: nowISO(),
+        companyDecision: 'technician_received_back',
+        companyDecisionNote: baseEntry.companyDecisionNote || 'تم استلام الجهاز من الشركة في الصيانة'
+      });
+      await updateDeviceStatus(deviceId, 'received');
+      renderAll();
+      alert('تم استلام الجهاز في الصيانة');
     }
 
     function renderCompany(){
@@ -4081,7 +4101,7 @@ window.addEventListener('load', function(){
       `).join('');
 
       const companyRepairRows = db.devices
-        .filter(d => d.status === 'sent_to_company_repair')
+        .filter(d => ['sent_to_company_repair','company_received_repair'].includes(d.status))
         .map(d => {
           const transfer = getDeviceCompanyRepairTransferEntry(d.id) || {};
           return `
@@ -4095,7 +4115,7 @@ window.addEventListener('load', function(){
             <td>${badge(deviceStatusMap, d.status)}</td>
             <td>
               <div class="actions">
-                <button class="small secondary" onclick="handleCompanyRepairDevice('${d.id}','return_to_technician')">إرجاع للصيانة</button>
+                <button class="small secondary" onclick="handleCompanyRepairDevice('${d.id}','return_to_technician')">تسليم إلى الصيانة</button>
                 <button class="small info" onclick="handleCompanyRepairDevice('${d.id}','completed_by_company')">تم التصليح</button>
                 <button class="small danger" onclick="handleCompanyRepairDevice('${d.id}','not_repaired')">تعذر التصليح</button>
               </div>
@@ -4173,7 +4193,7 @@ window.addEventListener('load', function(){
 
         <div class="section-title">
           <div>
-            <h2>أجهزة واردة من الصيانة للتصليح</h2>
+            <h2>أجهزة مستلمة من الصيانة للتصليح</h2>
             <p>أجهزة تم تحويلها من فني الصيانة إلى الشركة لإجراء تصليح خاص</p>
           </div>
         </div>
@@ -4191,7 +4211,7 @@ window.addEventListener('load', function(){
                 <th>إجراء</th>
               </tr>
             </thead>
-            <tbody>${companyRepairRows || `<tr><td colspan="8" class="muted">لا توجد أجهزة واردة من الصيانة للتصليح</td></tr>`}</tbody>
+            <tbody>${companyRepairRows || `<tr><td colspan="8" class="muted">لا توجد أجهزة مستلمة من الصيانة للتصليح</td></tr>`}</tbody>
           </table>
         </div>
 
@@ -4292,6 +4312,22 @@ window.addEventListener('load', function(){
           </tr>
         `;
         }).join('');
+      const companyRepairReturnRows = db.devices
+        .filter(d => d.status === 'returned_to_technician_pending_receive')
+        .map(d => {
+          const transfer = getDeviceCompanyRepairTransferEntry(d.id) || {};
+          return `
+          <tr>
+            <td>${escapeHtml(d.receiptNumber)}</td>
+            <td>${escapeHtml(d.customerName)}</td>
+            <td>${escapeHtml(d.deviceType)}</td>
+            <td>${escapeHtml(transfer.note || '—')}</td>
+            <td>${escapeHtml(transfer.companyHandledBy || '—')}</td>
+            <td>${formatDateTime(transfer.companyHandledAt)}</td>
+            <td><button class="small info" onclick="confirmTechnicianReceiveFromCompanyRepair('${d.id}')">تم استلام الجهاز</button></td>
+          </tr>
+        `;
+        }).join('');
       document.getElementById('technicianSection').innerHTML = `
         <div class="section-title">
           <div>
@@ -4336,6 +4372,29 @@ window.addEventListener('load', function(){
               </tr>
             </thead>
             <tbody>${companyRepairRows || `<tr><td colspan="6" class="muted">لا توجد أجهزة قابلة للإرسال حالياً</td></tr>`}</tbody>
+          </table>
+        </div>
+
+        <div class="section-title" style="margin-top:18px">
+          <div>
+            <h2>أجهزة راجعة من الشركة إلى الصيانة</h2>
+            <p>بعد أن تسلم الشركة الجهاز إلى الصيانة، يؤكد الفني الاستلام من هنا</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>رقم الوصل</th>
+                <th>الزبون</th>
+                <th>الجهاز</th>
+                <th>سبب الإرسال</th>
+                <th>سُلّم من الشركة بواسطة</th>
+                <th>وقت التسليم من الشركة</th>
+                <th>إجراء</th>
+              </tr>
+            </thead>
+            <tbody>${companyRepairReturnRows || `<tr><td colspan="7" class="muted">لا توجد أجهزة بانتظار استلام الصيانة</td></tr>`}</tbody>
           </table>
         </div>
       `;
