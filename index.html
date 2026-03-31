@@ -936,7 +936,12 @@ const APP_CONFIG = {
         requestedAt: safe.requestedAt || null,
         handledBy: String(safe.handledBy || '').trim(),
         handledAt: safe.handledAt || null,
-        handledNote: String(safe.handledNote || '').trim()
+        handledNote: String(safe.handledNote || '').trim(),
+        previousStatus: String(safe.previousStatus || '').trim(),
+        previousRepairAmount: Number(safe.previousRepairAmount || 0),
+        completionId: String(safe.completionId || '').trim(),
+        previousInvoiceNumbers: Array.isArray(safe.previousInvoiceNumbers) ? safe.previousInvoiceNumbers.map(v => String(v || '').trim()).filter(Boolean) : [],
+        previousPartSlipIds: Array.isArray(safe.previousPartSlipIds) ? safe.previousPartSlipIds.map(v => String(v || '').trim()).filter(Boolean) : []
       };
     }
 
@@ -946,6 +951,44 @@ const APP_CONFIG = {
         .map(normalizeDeviceReturnRequest)
         .filter(Boolean)
         .sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
+    }
+
+    function getLatestCompletionForDevice(deviceId){
+      return (db.completions || [])
+        .filter(c => c.deviceId === deviceId && !c.reopenedAt)
+        .sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0))[0] || null;
+    }
+
+    function getLatestTechnicianNoteForDevice(deviceId){
+      const completion = getLatestCompletionForDevice(deviceId);
+      return String(completion?.notes || '').trim();
+    }
+
+    function reopenDeviceInvoicesForReturn(deviceId, requestMeta = {}){
+      const completion = requestMeta.completionId
+        ? (db.completions || []).find(c => c.id === requestMeta.completionId)
+        : getLatestCompletionForDevice(deviceId);
+      if(!completion) return { completionId:'', partSlipIds:[], invoiceNumbers:[] };
+
+      completion.reopenedAt = nowISO();
+      completion.reopenedBy = currentUser ? currentUser.fullName : '—';
+      completion.reopenReason = String(requestMeta.reason || '').trim();
+
+      const partSlipIds = Array.isArray(completion.partSlipIds) ? completion.partSlipIds.filter(Boolean) : [];
+      partSlipIds.forEach(partSlipId => {
+        const part = (db.partSlips || []).find(p => p.id === partSlipId);
+        if(part){
+          part.status = 'pending';
+          part.usedInCompletionId = null;
+          part.updatedAt = nowISO();
+        }
+      });
+
+      return {
+        completionId: completion.id,
+        partSlipIds,
+        invoiceNumbers: Array.isArray(completion.salesInvoiceNumbers) ? completion.salesInvoiceNumbers.filter(Boolean) : []
+      };
     }
 
     function normalizeDeviceCompanyRepairTransferEntry(value){
@@ -3144,6 +3187,11 @@ function renderDevices(){
                   <div class="k">ملاحظات</div>
                   <div class="v">${escapeHtml(found.faultDescription || found.notRepairReason || getDeviceCompanyRepairTransferEntry(found.id)?.note || '—')}</div>
                 </div>
+
+                <div class="summary-card full">
+                  <div class="k">ملاحظات الفني</div>
+                  <div class="v">${escapeHtml(getLatestTechnicianNoteForDevice(found.id) || '—')}</div>
+                </div>
               </div>
 
               <div class="summary-actions">
@@ -3172,6 +3220,7 @@ function renderDevices(){
           <td>${escapeHtml(d.receiveDate || '—')}<br><span class="muted">${escapeHtml(d.receiveTime || '')}</span></td>
           <td><svg id="barcode_${d.id}"></svg></td>
           <td>${d.status === 'not_repaired' ? `<span class="muted">${escapeHtml(d.notRepairReason || '—')}</span>` : d.status === 'sent_to_company_repair' ? `<span class="muted">${escapeHtml(getDeviceCompanyRepairTransferEntry(d.id)?.note || '—')}</span>` : '—'}</td>
+          <td>${escapeHtml(getLatestTechnicianNoteForDevice(d.id) || '—')}</td>
           <td>
             <div class="actions">
               <button class="small secondary" onclick="showDeviceSummaryByReceipt('${escapeJs(d.receiptNumber || '')}')">حالة الجهاز</button>
@@ -3184,7 +3233,7 @@ function renderDevices(){
               ` : ''}
               <button class="small secondary" onclick="printReceipt('${d.id}')">طباعة الوصل</button>
               ${(currentUser && ['employee','manager'].includes(currentUser.role) && d.status === 'complete') ? `
-                <button class="small gray" onclick="setDeviceDelivered('${d.id}')">تم التسليم</button>
+                <button class="small gray" onclick="openSection('delivery')">التسليم من قسم التسليم</button>
               ` : ''}
               ${currentUser && currentUser.role === 'manager' ? `
                 <button class="small danger" onclick="deleteDeviceCascade('${d.id}')">حذف الجهاز</button>
@@ -3244,7 +3293,7 @@ function renderDevices(){
                 <th>إجراءات</th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="13" class="muted">لا توجد بيانات مطابقة للفلتر الحالي</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="14" class="muted">لا توجد بيانات مطابقة للفلتر الحالي</td></tr>`}</tbody>
           </table>
         </div>
       `;
@@ -3699,6 +3748,7 @@ window.addEventListener('load', function(){
           <td>${escapeHtml(r.customerName)}</td>
           <td>${escapeHtml(r.partDescription || '—')}</td>
           <td>${escapeHtml(r.notes || '—')}</td>
+          <td>${escapeHtml(getLatestTechnicianNoteForDevice(r.deviceId) || '—')}</td>
           <td>${badge(supplyStatusMap, r.status)}</td>
           <td>${escapeHtml(r.sentBy)}</td>
           <td>${formatDateTime(r.createdAt)}</td>
@@ -3755,6 +3805,7 @@ window.addEventListener('load', function(){
                 <th>الزبون</th>
                 <th>المطلوب</th>
                 <th>ملاحظات</th>
+                <th>ملاحظات الفني</th>
                 <th>الحالة</th>
                 <th>المرسل</th>
                 <th>الوقت</th>
@@ -4071,6 +4122,7 @@ window.addEventListener('load', function(){
           <td>${escapeHtml(r.customerName || '—')}</td>
           <td>${escapeHtml(r.partDescription || '—')}</td>
           <td>${escapeHtml(r.notes || '—')}</td>
+          <td>${escapeHtml(getLatestTechnicianNoteForDevice(r.deviceId) || '—')}</td>
           <td>${badge(supplyStatusMap, r.status)}</td>
           <td>${escapeHtml(r.sentBy || '—')}</td>
           <td>${escapeHtml(r.companyHandledBy || '—')}</td>
@@ -4118,8 +4170,9 @@ window.addEventListener('load', function(){
             <td>${escapeHtml(d.customerName)}</td>
             <td>${escapeHtml(d.deviceType)}</td>
             <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
+            <td>${escapeHtml(getLatestTechnicianNoteForDevice(d.id) || '—')}</td>
             <td>${badge(deviceStatusMap, d.status)}</td>
-            <td><button class="small gray" onclick="setDeviceDelivered('${d.id}')">تم التسليم</button></td>
+            <td><button class="small gray" onclick="setDeviceDelivered('${d.id}')">تم التسليم النهائي</button></td>
           </tr>
         `).join('');
 
@@ -4140,13 +4193,14 @@ window.addEventListener('load', function(){
                 <th>الزبون</th>
                 <th>المطلوب</th>
                 <th>ملاحظات</th>
+                <th>ملاحظات الفني</th>
                 <th>الحالة</th>
                 <th>مرسل من</th>
                 <th>معالج بواسطة</th>
                 <th>إجراء</th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="10" class="muted">لا توجد طلبات واردة</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="11" class="muted">لا توجد طلبات واردة</td></tr>`}</tbody>
           </table>
         </div>
 
@@ -4218,6 +4272,7 @@ window.addEventListener('load', function(){
                 <th>الزبون</th>
                 <th>الجهاز</th>
                 <th>المبلغ</th>
+                <th>ملاحظات الفني</th>
                 <th>الحالة</th>
                 <th>إجراء</th>
               </tr>
@@ -4475,6 +4530,7 @@ window.addEventListener('load', function(){
           <td>${escapeHtml(c.deviceType || '—')}</td>
           <td>${escapeHtml((c.partDescriptions || []).join('، ') || c.partDescription || '—')}</td>
           <td>${escapeHtml(c.technicianName || '—')}</td>
+          <td>${escapeHtml(c.notes || '—')}</td>
           <td>${Number(c.finalRepairAmount || 0).toLocaleString('ar-IQ')}</td>
           <td>${formatDateTime(c.completedAt)}</td>
         </tr>
@@ -4529,11 +4585,12 @@ window.addEventListener('load', function(){
                 <th>الجهاز</th>
                 <th>القطع المستخدمة</th>
                 <th>الفني</th>
+                <th>ملاحظات الفني</th>
                 <th>المبلغ النهائي</th>
                 <th>وقت الإتمام</th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="7" class="muted">لا توجد عمليات إتمام</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="8" class="muted">لا توجد عمليات إتمام</td></tr>`}</tbody>
           </table>
         </div>
       `;
@@ -4676,6 +4733,8 @@ window.addEventListener('load', function(){
         alert('يرجى كتابة سبب الإرجاع.');
         return;
       }
+
+      const reopened = reopenDeviceInvoicesForReturn(device.id, { reason: cleanReason });
       const handledAt = nowISO();
       db.deviceReturnRequests = sanitizeDeviceReturnRequests([
         {
@@ -4691,19 +4750,29 @@ window.addEventListener('load', function(){
           requestedAt: handledAt,
           handledBy: currentUser ? currentUser.fullName : '—',
           handledAt,
-          handledNote: 'تمت إعادة الاستلام مباشرة من موظف الاستلام والتسليم'
+          handledNote: reopened.invoiceNumbers.length
+            ? `تمت إعادة الاستلام مباشرة. أُعيدت الفواتير السابقة للتعديل: ${reopened.invoiceNumbers.join('، ')}`
+            : 'تمت إعادة الاستلام مباشرة من موظف الاستلام والتسليم',
+          previousStatus: device.status || '',
+          previousRepairAmount: Number(device.repairAmount || 0),
+          completionId: reopened.completionId || '',
+          previousInvoiceNumbers: reopened.invoiceNumbers || [],
+          previousPartSlipIds: reopened.partSlipIds || []
         },
         ...(db.deviceReturnRequests || [])
       ]);
       await updateDeviceStatus(device.id, 'received', {
         deliveredAt: null,
         deliveredBy: '',
-        notRepairReason: device.notRepairReason || ''
+        notRepairReason: device.notRepairReason || '',
+        repairAmount: Number(device.repairAmount || 0)
       });
       db.deviceReturnRequests = sanitizeDeviceReturnRequests(db.deviceReturnRequests || []);
       saveDB();
       renderAll();
-      alert('تمت إعادة استلام الجهاز من الزبون مباشرة وعاد إلى حالة مستلم.');
+      alert(reopened.invoiceNumbers.length
+        ? 'تمت إعادة استلام الجهاز وعادت فواتيره القديمة للتعديل أو لطلب إرجاعها للشركة.'
+        : 'تمت إعادة استلام الجهاز من الزبون مباشرة وعاد إلى حالة مستلم.');
     }
 
     async function handleDeviceReturnRequest(requestId, status){
@@ -4721,10 +4790,18 @@ window.addEventListener('load', function(){
       if(status === 'approved'){
         const device = db.devices.find(d => d.id === request.deviceId);
         if(device){
+          const reopened = reopenDeviceInvoicesForReturn(device.id, {
+            reason: request.reason || '',
+            completionId: request.completionId || ''
+          });
+          request.previousInvoiceNumbers = request.previousInvoiceNumbers?.length ? request.previousInvoiceNumbers : (reopened.invoiceNumbers || []);
+          request.previousPartSlipIds = request.previousPartSlipIds?.length ? request.previousPartSlipIds : (reopened.partSlipIds || []);
+          request.completionId = request.completionId || reopened.completionId || '';
           await updateDeviceStatus(device.id, 'received', {
             deliveredAt: null,
             deliveredBy: '',
-            notRepairReason: device.status === 'not_repaired' ? (device.notRepairReason || '') : device.notRepairReason
+            notRepairReason: device.status === 'not_repaired' ? (device.notRepairReason || '') : device.notRepairReason,
+            repairAmount: Number(request.previousRepairAmount || device.repairAmount || 0)
           });
         }
       }
@@ -4766,6 +4843,8 @@ window.addEventListener('load', function(){
             <td>${escapeHtml(r.deviceType || '—')}</td>
             <td>${escapeHtml(r.phone || '—')}</td>
             <td>${escapeHtml(r.reason || '—')}</td>
+            <td>${formatRepairAmountLabel(r.previousRepairAmount || 0, false)}</td>
+            <td>${escapeHtml((r.previousInvoiceNumbers || []).join('، ') || '—')}</td>
             <td>${badge(deviceReturnStatusMap, r.status)}</td>
             <td>${escapeHtml(r.requestedBy || '—')}<div class="hint" style="margin-top:6px">${escapeHtml(formatDateTime(r.requestedAt))}</div></td>
             <td>${escapeHtml(r.handledBy || '—')}${r.handledNote ? `<div class="hint" style="margin-top:6px">${escapeHtml(r.handledNote)}</div>` : ''}</td>
@@ -4830,6 +4909,8 @@ window.addEventListener('load', function(){
                   <th>الجهاز</th>
                   <th>الهاتف</th>
                   <th>سبب الإرجاع</th>
+                  <th>المبلغ السابق</th>
+                  <th>الفواتير السابقة</th>
                   <th>حالة الطلب</th>
                   <th>مقدم الطلب</th>
                   <th>معالج بواسطة</th>
@@ -4837,7 +4918,7 @@ window.addEventListener('load', function(){
                   <th>إجراء</th>
                 </tr>
               </thead>
-              <tbody>${deviceRows || `<tr><td colspan="10" class="muted">لا توجد طلبات إرجاع جهاز</td></tr>`}</tbody>
+              <tbody>${deviceRows || `<tr><td colspan="12" class="muted">لا توجد طلبات إرجاع جهاز</td></tr>`}</tbody>
             </table>
           </div>
         </div>
@@ -4870,7 +4951,7 @@ window.addEventListener('load', function(){
     async function setDeviceDeliveredToCustomer(deviceId){
       const device = db.devices.find(d => d.id === deviceId);
       if(!device) return;
-      const changed = await updateDeviceStatus(deviceId, 'delivered', {
+      const changed = await updateDeviceStatus(deviceId, 'delivered_customer', {
         deliveredAt: nowISO(),
         deliveredBy: currentUser ? currentUser.fullName : '—'
       });
@@ -4878,7 +4959,7 @@ window.addEventListener('load', function(){
       db.deviceReturnRequests = sanitizeDeviceReturnRequests(db.deviceReturnRequests || []);
       saveDB();
       renderAll();
-      alert('تم تسليم الجهاز للزبون بنجاح');
+      alert('تم تسجيل التسليم للزبون بنجاح');
     }
 
     function renderDelivery(){
@@ -4907,15 +4988,15 @@ window.addEventListener('load', function(){
                   : '';
 
                 if(canChooseDeliveryWay){
-                  return `<div class="actions"><button class="small" onclick="setDeviceDeliveredToCompany('${d.id}')">تم إرسال الجهاز للشركة / دلفري</button><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تم تسليم الجهاز للزبون</button></div>`;
+                  return `<div class="actions"><button class="small" onclick="setDeviceDeliveredToCompany('${d.id}')">تسليم إلى الشركة / دلفري</button><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تسليم إلى الزبون</button></div>`;
                 }
                 if(d.status === 'delivered_company'){
-                  return `<div class="actions"><span class="muted">تم إرساله للشركة</span><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تم تسليم الجهاز للزبون</button>${returnButton}</div>`;
+                  return `<div class="actions"><span class="muted">محدد حالياً: تسليم إلى الشركة</span><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تعديل إلى تسليم للزبون</button>${returnButton}</div>`;
                 }
                 if(d.status === 'delivered_customer'){
-                  return `<div class="actions"><span class="muted">تم التسليم للزبون</span>${returnButton}</div>`;
+                  return `<div class="actions"><span class="muted">محدد حالياً: تسليم إلى الزبون</span><button class="small" onclick="setDeviceDeliveredToCompany('${d.id}')">تعديل إلى تسليم للشركة</button>${returnButton}</div>`;
                 }
-                return `<div class="actions"><span class="muted">تم التسليم</span>${returnButton}${latestReturn && latestReturn.status !== 'requested' ? `<span class="muted">آخر طلب: ${(deviceReturnStatusMap[latestReturn.status] || {}).label || latestReturn.status}</span>` : ''}</div>`;
+                return `<div class="actions"><span class="muted">تم التسليم النهائي</span><button class="small" onclick="setDeviceDeliveredToCompany('${d.id}')">تعديل إلى تسليم للشركة</button><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تعديل إلى تسليم للزبون</button>${returnButton}${latestReturn && latestReturn.status !== 'requested' ? `<span class="muted">آخر طلب: ${(deviceReturnStatusMap[latestReturn.status] || {}).label || latestReturn.status}</span>` : ''}</div>`;
               })()}
             </td>
           </tr>
@@ -4925,7 +5006,7 @@ window.addEventListener('load', function(){
         <div class="section-title">
           <div>
             <h2>تسليم الجهاز</h2>
-            <p>إرسال الأجهزة المكتملة أو غير المُصلحة إلى الشركة / الدلفري أو تسليمها مباشرة للزبون</p>
+            <p>يمكن اختيار تسليم إلى الزبون أو إلى الشركة / الدلفري، ويمكن تعديل جهة التسليم لاحقاً عند الخطأ</p>
           </div>
         </div>
         <div class="table-wrap">
