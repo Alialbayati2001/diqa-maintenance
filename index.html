@@ -441,6 +441,7 @@
       partSlips: [],
       completions: [],
       deviceMissingParts: {},
+      deviceReturnRequests: [],
       counters: { receipt: 1 }
     };
 
@@ -869,6 +870,7 @@ const APP_CONFIG = {
           ...d
         }));
         const maxSerial = parsed.devices.reduce((max, d) => Math.max(max, Number(d.receiptSerial) || 0), 0);
+        parsed.deviceReturnRequests = sanitizeDeviceReturnRequests(parsed.deviceReturnRequests || []);
         parsed.counters = parsed.counters || {};
         parsed.counters.receipt = Math.max(Number(parsed.counters.receipt) || 1, maxSerial + 1, 1);
         return parsed;
@@ -883,6 +885,7 @@ const APP_CONFIG = {
       return {
         users: Array.isArray(db.users) && db.users.length ? db.users : structuredClone(DEFAULT_DB.users),
         deviceMissingParts: sanitizeMissingPartsMap(db.deviceMissingParts || {}),
+        deviceReturnRequests: sanitizeDeviceReturnRequests(db.deviceReturnRequests || []),
         counters: db.counters || { receipt: 1 }
       };
     }
@@ -910,6 +913,38 @@ const APP_CONFIG = {
       );
     }
 
+
+    function normalizeDeviceReturnRequest(entry){
+      const safe = entry && typeof entry === 'object' ? entry : {};
+      const id = String(safe.id || '').trim();
+      const deviceId = String(safe.deviceId || '').trim();
+      const receiptNumber = String(safe.receiptNumber || '').trim();
+      if(!id || !deviceId || !receiptNumber) return null;
+      return {
+        id,
+        deviceId,
+        receiptNumber,
+        customerName: String(safe.customerName || '').trim(),
+        deviceType: String(safe.deviceType || '').trim(),
+        phone: String(safe.phone || '').trim(),
+        reason: String(safe.reason || '').trim(),
+        status: ['requested','approved','rejected'].includes(String(safe.status || '').trim()) ? String(safe.status || '').trim() : 'requested',
+        requestedBy: String(safe.requestedBy || '').trim(),
+        requestedAt: safe.requestedAt || null,
+        handledBy: String(safe.handledBy || '').trim(),
+        handledAt: safe.handledAt || null,
+        handledNote: String(safe.handledNote || '').trim()
+      };
+    }
+
+    function sanitizeDeviceReturnRequests(value){
+      const safe = Array.isArray(value) ? value : [];
+      return safe
+        .map(normalizeDeviceReturnRequest)
+        .filter(Boolean)
+        .sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
+    }
+
     function sanitizeRemoteMetaPayload(payload){
       const safe = payload && typeof payload === 'object' ? payload : {};
       const safeUsers = Array.isArray(safe.users)
@@ -927,6 +962,7 @@ const APP_CONFIG = {
       return {
         users: safeUsers.length ? safeUsers : structuredClone(DEFAULT_DB.users),
         deviceMissingParts: sanitizeMissingPartsMap(safe.deviceMissingParts || {}),
+        deviceReturnRequests: sanitizeDeviceReturnRequests(safe.deviceReturnRequests || []),
         counters: safe.counters && typeof safe.counters === 'object' ? safe.counters : { receipt: 1 }
       };
     }
@@ -1364,6 +1400,7 @@ const APP_CONFIG = {
           const payload = sanitizeRemoteMetaPayload(stateRow?.payload || {});
           db.users = payload.users || structuredClone(DEFAULT_DB.users);
           db.deviceMissingParts = sanitizeMissingPartsMap(payload.deviceMissingParts || {});
+          db.deviceReturnRequests = sanitizeDeviceReturnRequests(payload.deviceReturnRequests || []);
           db.counters = { ...(db.counters || {}), ...(payload.counters || {}) };
           saveDB(true);
           if(currentUser) renderAll();
@@ -1484,6 +1521,7 @@ const APP_CONFIG = {
           ...db,
           users: remoteMeta.users || structuredClone(DEFAULT_DB.users),
           deviceMissingParts: sanitizeMissingPartsMap(remoteMeta.deviceMissingParts || {}),
+          deviceReturnRequests: sanitizeDeviceReturnRequests(remoteMeta.deviceReturnRequests || []),
           devices,
           supplyRequests,
           partSlips,
@@ -1779,6 +1817,12 @@ const deviceStatusMap = {
       return_requested: {label:'طلب إرجاع', cls:'b-return-requested'},
       returned: {label:'تم الإرجاع', cls:'b-returned'},
       rejected_return: {label:'مرفوض الإرجاع', cls:'b-rejected-return'}
+    };
+
+    const deviceReturnStatusMap = {
+      requested: {label:'طلب إرجاع جهاز', cls:'b-return-requested'},
+      approved: {label:'تمت إعادة الاستلام', cls:'b-returned'},
+      rejected: {label:'مرفوض', cls:'b-rejected-return'}
     };
 
     function badge(map, value){
@@ -4324,8 +4368,94 @@ window.addEventListener('load', function(){
       renderAll();
     }
 
+
+    function getDevicePendingReturnRequest(deviceId){
+      return (db.deviceReturnRequests || []).find(r => r.deviceId === deviceId && r.status === 'requested') || null;
+    }
+
+    function getDeviceReturnRequestHistory(deviceId){
+      return (db.deviceReturnRequests || []).filter(r => r.deviceId === deviceId);
+    }
+
+    function requestDeviceReturn(deviceId){
+      const device = db.devices.find(d => d.id === deviceId);
+      if(!device) return;
+      if(!['delivered','delivered_customer','delivered_company'].includes(device.status)){
+        alert('لا يمكن طلب إرجاع هذا الجهاز إلا بعد أن يكون مسلماً.');
+        return;
+      }
+      const existing = getDevicePendingReturnRequest(deviceId);
+      if(existing){
+        alert('يوجد طلب إرجاع مفتوح لهذا الجهاز بالفعل.');
+        return;
+      }
+      const reason = prompt('سبب إعادة الجهاز:');
+      if(reason === null) return;
+      const cleanReason = String(reason || '').trim();
+      if(!cleanReason){
+        alert('يرجى كتابة سبب الإرجاع.');
+        return;
+      }
+      const handledAt = nowISO();
+      db.deviceReturnRequests = sanitizeDeviceReturnRequests([
+        {
+          id: uid('drr'),
+          deviceId: device.id,
+          receiptNumber: device.receiptNumber || '',
+          customerName: device.customerName || '',
+          deviceType: device.deviceType || '',
+          phone: device.phone || '',
+          reason: cleanReason,
+          status: 'approved',
+          requestedBy: currentUser ? currentUser.fullName : '—',
+          requestedAt: handledAt,
+          handledBy: currentUser ? currentUser.fullName : '—',
+          handledAt,
+          handledNote: 'تمت إعادة الاستلام مباشرة من موظف الاستلام والتسليم'
+        },
+        ...(db.deviceReturnRequests || [])
+      ]);
+      await updateDeviceStatus(device.id, 'received', {
+        deliveredAt: null,
+        deliveredBy: '',
+        notRepairReason: device.notRepairReason || ''
+      });
+      db.deviceReturnRequests = sanitizeDeviceReturnRequests(db.deviceReturnRequests || []);
+      saveDB();
+      renderAll();
+      alert('تمت إعادة استلام الجهاز من الزبون مباشرة وعاد إلى حالة مستلم.');
+    }
+
+    async function handleDeviceReturnRequest(requestId, status){
+      const request = (db.deviceReturnRequests || []).find(r => r.id === requestId);
+      if(!request) return;
+      if(request.status !== 'requested') return;
+      const handledNote = status === 'rejected'
+        ? String(prompt('سبب رفض طلب إرجاع الجهاز (اختياري):') || '').trim()
+        : '';
+      request.status = status;
+      request.handledBy = currentUser ? currentUser.fullName : '—';
+      request.handledAt = nowISO();
+      request.handledNote = handledNote;
+
+      if(status === 'approved'){
+        const device = db.devices.find(d => d.id === request.deviceId);
+        if(device){
+          await updateDeviceStatus(device.id, 'received', {
+            deliveredAt: null,
+            deliveredBy: '',
+            notRepairReason: device.status === 'not_repaired' ? (device.notRepairReason || '') : device.notRepairReason
+          });
+        }
+      }
+      db.deviceReturnRequests = sanitizeDeviceReturnRequests(db.deviceReturnRequests || []);
+      saveDB();
+      renderAll();
+      alert(status === 'approved' ? 'تمت إعادة الجهاز إلى حالة مستلم.' : 'تم رفض طلب إرجاع الجهاز.');
+    }
+
     function renderReturns(){
-      const rows = db.partSlips.filter(p => ['return_requested','returned','rejected_return'].includes(p.status)).map(p => `
+      const partRows = db.partSlips.filter(p => ['return_requested','returned','rejected_return'].includes(p.status)).map(p => `
         <tr>
           <td>${escapeHtml(p.salesInvoiceNumber || '—')}</td>
           <td>${escapeHtml(p.receiptNumber)}</td>
@@ -4345,30 +4475,91 @@ window.addEventListener('load', function(){
           </td>
         </tr>
       `).join('');
+
+      const deviceRows = (db.deviceReturnRequests || []).map(r => {
+        const device = db.devices.find(d => d.id === r.deviceId);
+        const currentStatus = device ? badge(deviceStatusMap, device.status) : '<span class="muted">غير موجود</span>';
+        return `
+          <tr>
+            <td>${escapeHtml(r.receiptNumber || '—')}</td>
+            <td>${escapeHtml(r.customerName || '—')}</td>
+            <td>${escapeHtml(r.deviceType || '—')}</td>
+            <td>${escapeHtml(r.phone || '—')}</td>
+            <td>${escapeHtml(r.reason || '—')}</td>
+            <td>${badge(deviceReturnStatusMap, r.status)}</td>
+            <td>${escapeHtml(r.requestedBy || '—')}<div class="hint" style="margin-top:6px">${escapeHtml(formatDateTime(r.requestedAt))}</div></td>
+            <td>${escapeHtml(r.handledBy || '—')}${r.handledNote ? `<div class="hint" style="margin-top:6px">${escapeHtml(r.handledNote)}</div>` : ''}</td>
+            <td>${currentStatus}</td>
+            <td>
+              <div class="actions">
+                <span class="muted">تمت المعالجة تلقائياً عند إعادة الاستلام</span>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
       document.getElementById('returnsSection').innerHTML = `
         <div class="section-title">
           <div>
-            <h2>طلبات إرجاع وصل الصيانة</h2>
-            <p>فني الصيانة يطلب الإرجاع والشركة تقرر القبول أو الرفض</p>
+            <h2>طلبات الإرجاع</h2>
+            <p>يشمل هذا القسم طلبات إرجاع وصل الصيانة وطلبات إعادة استلام الأجهزة بعد تسليمها للزبون</p>
           </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>رقم الفاتورة</th>
-                <th>مرجع الاستلام</th>
-                <th>الزبون</th>
-                <th>القطعة</th>
-                <th>السبب</th>
-                <th>الحالة</th>
-                <th>مقدم الطلب</th>
-                <th>معالج بواسطة</th>
-                <th>إجراء</th>
-              </tr>
-            </thead>
-            <tbody>${rows || `<tr><td colspan="9" class="muted">لا توجد طلبات إرجاع</td></tr>`}</tbody>
-          </table>
+
+        <div class="card panel" style="margin-bottom:16px">
+          <div class="section-title">
+            <div>
+              <h2>طلبات إرجاع وصل الصيانة</h2>
+              <p>فني الصيانة يطلب الإرجاع والشركة تقرر القبول أو الرفض</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>رقم الفاتورة</th>
+                  <th>مرجع الاستلام</th>
+                  <th>الزبون</th>
+                  <th>القطعة</th>
+                  <th>السبب</th>
+                  <th>الحالة</th>
+                  <th>مقدم الطلب</th>
+                  <th>معالج بواسطة</th>
+                  <th>إجراء</th>
+                </tr>
+              </thead>
+              <tbody>${partRows || `<tr><td colspan="9" class="muted">لا توجد طلبات إرجاع وصل صيانة</td></tr>`}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card panel">
+          <div class="section-title">
+            <div>
+              <h2>طلبات إرجاع جهاز</h2>
+              <p>عند وجود مشكلة بعد التسليم يستطيع موظف الاستلام إعادة استلام الجهاز مباشرة ليعود إلى حالة مستلم بدون أي موافقة</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>رقم الوصل</th>
+                  <th>الزبون</th>
+                  <th>الجهاز</th>
+                  <th>الهاتف</th>
+                  <th>سبب الإرجاع</th>
+                  <th>حالة الطلب</th>
+                  <th>مقدم الطلب</th>
+                  <th>معالج بواسطة</th>
+                  <th>حالة الجهاز الحالية</th>
+                  <th>إجراء</th>
+                </tr>
+              </thead>
+              <tbody>${deviceRows || `<tr><td colspan="10" class="muted">لا توجد طلبات إرجاع جهاز</td></tr>`}</tbody>
+            </table>
+          </div>
         </div>
       `;
     }
@@ -4404,6 +4595,8 @@ window.addEventListener('load', function(){
         deliveredBy: currentUser ? currentUser.fullName : '—'
       });
       if(!changed) return;
+      db.deviceReturnRequests = sanitizeDeviceReturnRequests(db.deviceReturnRequests || []);
+      saveDB();
       renderAll();
       alert('تم تسليم الجهاز للزبون بنجاح');
     }
@@ -4424,15 +4617,26 @@ window.addEventListener('load', function(){
             <td>${escapeHtml(d.deliveredBy || '—')}</td>
             <td>${formatDateTime(d.deliveredAt)}</td>
             <td>
-              ${
-                canChooseDeliveryWay
-                ? `<div class="actions"><button class="small" onclick="setDeviceDeliveredToCompany('${d.id}')">تم إرسال الجهاز للشركة / دلفري</button><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تم تسليم الجهاز للزبون</button></div>`
-                : d.status === 'delivered_company'
-                ? `<div class="actions"><span class="muted">تم إرساله للشركة</span><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تم تسليم الجهاز للزبون</button></div>`
-                : d.status === 'delivered_customer'
-                ? `<span class="muted">تم التسليم للزبون</span>`
-                : `<span class="muted">تم التسليم</span>`
-              }
+              ${(() => {
+                const pendingReturn = getDevicePendingReturnRequest(d.id);
+                const latestReturn = getDeviceReturnRequestHistory(d.id)[0] || null;
+                const returnButton = (currentUser && ['employee','manager'].includes(currentUser.role) && ['delivered','delivered_customer','delivered_company'].includes(d.status))
+                  ? (pendingReturn
+                      ? `<span class="muted">يوجد طلب إرجاع مفتوح</span>`
+                      : `<button class="small warning" onclick="requestDeviceReturn('${d.id}')">طلب إرجاع جهاز</button>`)
+                  : '';
+
+                if(canChooseDeliveryWay){
+                  return `<div class="actions"><button class="small" onclick="setDeviceDeliveredToCompany('${d.id}')">تم إرسال الجهاز للشركة / دلفري</button><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تم تسليم الجهاز للزبون</button></div>`;
+                }
+                if(d.status === 'delivered_company'){
+                  return `<div class="actions"><span class="muted">تم إرساله للشركة</span><button class="small info" onclick="setDeviceDeliveredToCustomer('${d.id}')">تم تسليم الجهاز للزبون</button>${returnButton}</div>`;
+                }
+                if(d.status === 'delivered_customer'){
+                  return `<div class="actions"><span class="muted">تم التسليم للزبون</span>${returnButton}</div>`;
+                }
+                return `<div class="actions"><span class="muted">تم التسليم</span>${returnButton}${latestReturn && latestReturn.status !== 'requested' ? `<span class="muted">آخر طلب: ${(deviceReturnStatusMap[latestReturn.status] || {}).label || latestReturn.status}</span>` : ''}</div>`;
+              })()}
             </td>
           </tr>
         `;
