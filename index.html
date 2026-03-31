@@ -1077,16 +1077,23 @@ const APP_CONFIG = {
         return (data || []).map(row => this.mapRow(row));
       },
       async getByBarcode(barcodeValue){
-        const { data, error } = await supabaseClient
-          .from(APP_CONFIG.devicesTable)
-          .select('*')
-          .eq('barcode_value', String(barcodeValue || '').trim())
-          .maybeSingle();
-        if(error){
+        const normalized = String(barcodeValue || '').trim();
+        if(!normalized) return null;
+        try{
+          const { data, error } = await supabaseClient
+            .from(APP_CONFIG.devicesTable)
+            .select('*')
+            .eq('barcode_value', normalized)
+            .maybeSingle();
+          if(error){
+            console.error('Device by barcode failed:', error);
+          }
+          const mapped = this.mapRow(data);
+          if(mapped) return mapped;
+        }catch(error){
           console.error('Device by barcode failed:', error);
-          return null;
         }
-        return this.mapRow(data);
+        return db.devices.find(d => String(d.barcodeValue || '').trim() === normalized) || null;
       },
       async getIds(){
         const { data, error } = await supabaseClient.from(APP_CONFIG.devicesTable).select('id');
@@ -1622,35 +1629,34 @@ const APP_CONFIG = {
 
     async function bootPublic(){
       const params = new URLSearchParams(location.search);
-      const rawCode = String(params.get('b') || params.get('barcode') || params.get('receipt') || params.get('r') || '').trim();
-      if(!rawCode) return false;
+      const barcodeValue = String(params.get('b') || params.get('barcode') || '').trim();
+      const receiptValue = String(params.get('r') || params.get('id') || '').trim();
+      const lookupValue = barcodeValue || receiptValue;
+      if(!lookupValue) return false;
 
-      document.body.innerHTML = '<div style="min-height:100vh;display:grid;place-items:center;padding:40px;text-align:center;font-family:Tahoma;background:#ffffff;color:#2cb9c2">جاري تحميل حالة الجهاز...</div>';
+      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:Tahoma">جاري تحميل حالة الجهاز...</div>';
 
       let device = null;
-      try{
-        device = await DevicesAPI.getByBarcode(rawCode);
-      }catch(err){
-        console.error('Public barcode lookup failed:', err);
+      if(barcodeValue){
+        device = await DevicesAPI.getByBarcode(barcodeValue);
+      }
+      if(!device && receiptValue){
+        device = db.devices.find(d => String(d.receiptNumber || '').trim() === receiptValue) || null;
+      }
+      if(!device && !barcodeValue && receiptValue){
+        const guessedBarcode = buildBarcodeValue(receiptValue);
+        device = await DevicesAPI.getByBarcode(guessedBarcode);
       }
 
       if(!device){
-        try{
-          const maybeReceipt = String(rawCode || '').replace(/^DIQA-/i, '').trim();
-          device = DataAPI.getDeviceByBarcode(rawCode) || DataAPI.getDeviceByReceipt(maybeReceipt);
-        }catch(err){
-          console.error('Local public barcode lookup failed:', err);
-        }
-      }
-
-      if(!device){
-        document.body.innerHTML = '<div style="min-height:100vh;display:grid;place-items:center;padding:24px;font-family:Tahoma;background:#ffffff;color:#2cb9c2"><div style="width:min(720px,100%);border:2px solid #2cb9c2;border-radius:22px;padding:24px;box-shadow:0 10px 30px rgba(44,185,194,.15)"><div style="font-size:28px;font-weight:700;margin-bottom:10px">تعذر العثور على الجهاز</div><div style="font-size:16px;line-height:1.9">تأكد من أن رمز الباركود صحيح أو راجع المركز لمعرفة الحالة.</div><div style="margin-top:14px;font-size:14px;opacity:.8">الرمز: ' + escapeHtml(rawCode) + '</div></div></div>';
+        document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:Tahoma">❌ لم يتم العثور على الجهاز</div>';
         return true;
       }
 
       renderPublicDevice(device);
-      if(device.barcodeValue){
-        subscribeToDeviceRealtime(device.barcodeValue, renderPublicDevice);
+      const liveBarcode = String(device.barcodeValue || barcodeValue || buildBarcodeValue(device.receiptNumber) || '').trim();
+      if(liveBarcode){
+        subscribeToDeviceRealtime(liveBarcode, renderPublicDevice);
       }
       window.addEventListener('beforeunload', () => {
         unsubscribeDeviceRealtime();
@@ -4395,7 +4401,7 @@ window.addEventListener('load', function(){
       return (db.deviceReturnRequests || []).filter(r => r.deviceId === deviceId);
     }
 
-    function requestDeviceReturn(deviceId){
+    async function requestDeviceReturn(deviceId){
       const device = db.devices.find(d => d.id === deviceId);
       if(!device) return;
       if(!['delivered','delivered_customer','delivered_company'].includes(device.status)){
@@ -4717,21 +4723,19 @@ window.addEventListener('load', function(){
       try{
         const isPublic = await bootPublic();
         if(isPublic) return;
-
-        try{ await hydrateFromSupabase(); }catch(err){ console.error('hydrateFromSupabase failed:', err); }
-        try{ await refreshDevicesFromSupabase(); }catch(err){ console.error('refreshDevicesFromSupabase failed:', err); }
-        try{ await refreshArrayTablesFromSupabase(); }catch(err){ console.error('refreshArrayTablesFromSupabase failed:', err); }
-
+        await hydrateFromSupabase();
+        await refreshDevicesFromSupabase();
+        await refreshArrayTablesFromSupabase();
         renderAll();
         window.addEventListener('focus', async () => {
-          try{ await refreshDevicesFromSupabase(); }catch(err){ console.error('focus refreshDevicesFromSupabase failed:', err); }
-          try{ await refreshArrayTablesFromSupabase(); }catch(err){ console.error('focus refreshArrayTablesFromSupabase failed:', err); }
+          await refreshDevicesFromSupabase();
+          await refreshArrayTablesFromSupabase();
           if(currentUser) renderAll();
         });
         document.addEventListener('visibilitychange', async () => {
           if(document.visibilityState !== 'visible') return;
-          try{ await refreshDevicesFromSupabase(); }catch(err){ console.error('visibility refreshDevicesFromSupabase failed:', err); }
-          try{ await refreshArrayTablesFromSupabase(); }catch(err){ console.error('visibility refreshArrayTablesFromSupabase failed:', err); }
+          await refreshDevicesFromSupabase();
+          await refreshArrayTablesFromSupabase();
           if(currentUser) renderAll();
         });
         window.addEventListener('beforeunload', () => {
@@ -4743,7 +4747,6 @@ window.addEventListener('load', function(){
         });
       }catch(err){
         console.error(err);
-        renderAll();
       }
     });
 
