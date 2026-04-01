@@ -518,6 +518,8 @@
     let currentUser = null;
     let currentSection = 'dashboard';
     let dashboardSelectedDate = null;
+    let dashboardOpenQuickListType = '';
+    let dashboardQuickListPinned = false;
 
     
     const MAINTENANCE_PHONE = "07742228831";
@@ -2565,7 +2567,34 @@ const deviceStatusMap = {
         .sort((a,b) => new Date(b.completedAt || b.updatedAt || b.createdAt || 0) - new Date(a.completedAt || a.updatedAt || a.createdAt || 0));
     }
 
+    function getDashboardQuickListHtml(type){
+      if(type === 'received_today'){
+        return renderQuickDevicesTable('الأجهزة المستلمة في التاريخ المحدد', getSelectedDateReceivedDevices());
+      }else if(type === 'delivered_today'){
+        return renderQuickDevicesTable('الأجهزة المسلمة في التاريخ المحدد', getSelectedDateDeliveredDevices());
+      }else if(type === 'completed_today'){
+        return renderQuickDevicesTable('الأجهزة المكتملة في التاريخ المحدد', getSelectedDateCompletedDevices());
+      }else if(type === 'not_repaired_today'){
+        return renderQuickDevicesTable('الأجهزة غير المصلحة في التاريخ المحدد', getSelectedDateNotRepairedDevices());
+      }else if(type === 'overdue'){
+        return renderQuickDevicesTable('الأجهزة المتأخرة', getOverdueDevicesList());
+      }else if(type === 'pending_parts'){
+        return renderQuickPartSlipsTable('الوصولات المعلقة عند الفني', getPendingTechnicianSlips());
+      }else if(type === 'missing_parts'){
+        return renderQuickMissingPartsTable('كل نواقص قطع الغيار المطلوبة من الصيانة', true);
+      }else if(type === 'await_approval'){
+        return renderQuickDevicesTable('الأجهزة بانتظار موافقة الزبون', getAwaitingApprovalDevices());
+      }else if(type === 'in_maintenance'){
+        return renderQuickDevicesTable('الأجهزة قيد الصيانة', getInMaintenanceDevices());
+      }else if(type === 'ready_not_delivered'){
+        return renderQuickDevicesTable('الأجهزة الجاهزة غير المسلمة', getReadyNotDeliveredDevices());
+      }
+      return '';
+    }
+
     function closeDashboardQuickList(){
+      dashboardOpenQuickListType = '';
+      dashboardQuickListPinned = false;
       const box = document.getElementById('dashboardQuickList');
       if(box) box.innerHTML = '';
     }
@@ -2707,35 +2736,24 @@ const deviceStatusMap = {
     }
 
     function openDashboardQuickList(type){
-      let html = '';
-
-      if(type === 'received_today'){
-        html = renderQuickDevicesTable('الأجهزة المستلمة في التاريخ المحدد', getSelectedDateReceivedDevices());
-      }else if(type === 'delivered_today'){
-        html = renderQuickDevicesTable('الأجهزة المسلمة في التاريخ المحدد', getSelectedDateDeliveredDevices());
-      }else if(type === 'completed_today'){
-        html = renderQuickDevicesTable('الأجهزة المكتملة في التاريخ المحدد', getSelectedDateCompletedDevices());
-      }else if(type === 'not_repaired_today'){
-        html = renderQuickDevicesTable('الأجهزة غير المصلحة في التاريخ المحدد', getSelectedDateNotRepairedDevices());
-      }else if(type === 'overdue'){
-        html = renderQuickDevicesTable('الأجهزة المتأخرة', getOverdueDevicesList());
-      }else if(type === 'pending_parts'){
-        html = renderQuickPartSlipsTable('الوصولات المعلقة عند الفني', getPendingTechnicianSlips());
-      }else if(type === 'missing_parts'){
-        html = renderQuickMissingPartsTable('كل نواقص قطع الغيار المطلوبة من الصيانة', true);
-      }else if(type === 'await_approval'){
-        html = renderQuickDevicesTable('الأجهزة بانتظار موافقة الزبون', getAwaitingApprovalDevices());
-      }else if(type === 'in_maintenance'){
-        html = renderQuickDevicesTable('الأجهزة قيد الصيانة', getInMaintenanceDevices());
-      }else if(type === 'ready_not_delivered'){
-        html = renderQuickDevicesTable('الأجهزة الجاهزة غير المسلمة', getReadyNotDeliveredDevices());
-      }
-
       const box = document.getElementById('dashboardQuickList');
-      if(box){
-        box.innerHTML = html;
-        box.scrollIntoView({ behavior:'smooth', block:'start' });
+      if(!box) return;
+
+      if(dashboardOpenQuickListType === type && dashboardQuickListPinned){
+        closeDashboardQuickList();
+        return;
       }
+
+      const html = getDashboardQuickListHtml(type);
+      if(!html){
+        closeDashboardQuickList();
+        return;
+      }
+
+      dashboardOpenQuickListType = type;
+      dashboardQuickListPinned = true;
+      box.innerHTML = html;
+      box.scrollIntoView({ behavior:'smooth', block:'nearest' });
     }
 
     function canManageMissingParts(){
@@ -2979,6 +2997,13 @@ const deviceStatusMap = {
         ${renderQuickMissingPartsTable('نواقص قطع الغيار المطلوبة من الصيانة')}
         <div id="dashboardQuickList"></div>
       `;
+
+      if(dashboardOpenQuickListType && dashboardQuickListPinned){
+        const box = document.getElementById('dashboardQuickList');
+        if(box){
+          box.innerHTML = getDashboardQuickListHtml(dashboardOpenQuickListType);
+        }
+      }
     }
 
     function handleDeviceTypeInput(input){
