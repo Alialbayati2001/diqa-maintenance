@@ -8,7 +8,7 @@
     :root{
       --bg:#ffffff;
       --panel:#ffffff;
-      --panel-2:#ffffff;
+      --panel-2:#ffffff;a
       --line:#2cb9c2;
       --text:#2cb9c2;
       --muted:#2cb9c2;
@@ -405,8 +405,616 @@
       to{opacity:1;transform:translateY(0)}
     }
 
+
+
+    .mobile-menu-btn{display:none;align-items:center;justify-content:center;min-width:44px;height:44px;padding:0 12px;font-size:22px;font-weight:700}
+    .mobile-nav-backdrop{display:none}
+    .table-wrap{-webkit-overflow-scrolling:touch}
+    @media (max-width:900px){
+      body{font-size:15px}
+      .topbar{padding:12px 14px;gap:10px;align-items:center}
+      .brand{min-width:0;flex:1}
+      .brand h1{font-size:18px;line-height:1.4}
+      .brand p{font-size:12px;line-height:1.6}
+      .mobile-menu-btn{display:inline-flex}
+      .topbar .actions{gap:6px;flex-wrap:wrap;justify-content:flex-end}
+      .topbar .actions button.small{padding:9px 10px;font-size:12px}
+      .layout{display:block;padding:12px}
+      .sidebar{position:fixed !important;top:0;right:0;bottom:0;width:min(84vw,320px);z-index:1200;border-radius:0;transform:translateX(105%);transition:transform .22s ease;overflow:auto;padding:16px 14px 24px}
+      body.mobile-nav-open .sidebar{transform:translateX(0)}
+      .mobile-nav-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.48);z-index:1100;opacity:0;pointer-events:none;transition:opacity .22s ease}
+      body.mobile-nav-open .mobile-nav-backdrop{display:block;opacity:1;pointer-events:auto}
+      .content{gap:12px}
+      .panel{padding:12px}
+      .section-title{display:block;margin-bottom:12px}
+      .section-title h2{font-size:18px;line-height:1.4}
+      .section-title p{font-size:12px;line-height:1.7}
+      .toolbar{display:grid;grid-template-columns:1fr;gap:8px;align-items:stretch}
+      .toolbar .search{min-width:0}
+      .grid,.grid-2,.grid-3,.stats,.summary-grid{grid-template-columns:1fr !important;gap:10px}
+      .card,.stat,.summary-card,.quick-list{border-radius:14px}
+      .actions{gap:6px}
+      .actions button,.toolbar button,button{min-height:42px}
+      .table-wrap{border-radius:14px;max-height:none;overflow:auto}
+      table{min-width:760px}
+      th,td{padding:9px 8px;font-size:12px;white-space:nowrap}
+      input,select,textarea{padding:12px;font-size:16px}
+      .login-wrap{padding:14px}
+      .login-card{padding:18px}
+      .scanner-card{padding:12px}
+      .scanner-actions{display:grid;grid-template-columns:1fr}
+      .summary-actions{display:grid;grid-template-columns:1fr}
+    }
+    @media (max-width:640px){
+      .topbar{flex-wrap:wrap;align-items:flex-start}
+      .topbar .actions{width:100%;justify-content:stretch}
+      .topbar .actions button{flex:1}
+      .footer-note{font-size:11px;line-height:1.7}
+      .toast-wrap{left:10px;right:10px;bottom:10px;width:auto}
+      .toast{padding:12px}
+      .badge{font-size:11px;padding:4px 8px}
+    }
+
+
+
+    /* ===== تحسينات احترافية للموبايل مع الحفاظ على نسخة الديسكتوب ===== */
+    .mobile-menu-btn{
+      display:none;
+      width:44px;
+      height:44px;
+      border-radius:12px;
+      padding:0;
+      font-size:22px;
+      line-height:1;
+      align-items:center;
+      justify-content:center;
+      flex:0 0 44px;
+    }
+    .mobile-nav-backdrop{
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(2,6,23,.45);
+      z-index:35;
+      opacity:0;
+      transition:opacity .2s ease;
+    }
+    .mobile-nav-backdrop.show{
+      display:block;
+      opacity:1;
+    }
+    .section-page{scroll-margin-top:90px}
+    .card{overflow:hidden}
+    .table-wrap table{min-width:760px}
+    .table-wrap.compact-mobile table{min-width:100%}
+    .section-title,.toolbar,.actions{row-gap:10px}
+    .toolbar > *{min-height:44px}
+    .toolbar input,.toolbar select,.toolbar button{min-height:44px}
+    .actions button{min-height:40px}
+    .mobile-bottom-spacer{display:none;height:16px}
+
+    @media (max-width:900px){
+      html,body{overflow-x:hidden}
+      body{font-size:15px}
+      .login-wrap{padding:14px}
+      .login-card{padding:18px}
+      .mobile-menu-btn{display:inline-flex}
+      .topbar{
+        padding:12px 14px;
+        gap:10px;
+        align-items:flex-start;
+      }
+      .brand{flex:1;min-width:0}
+      .brand h1{font-size:18px;line-height:1.45}
+      .brand p{font-size:12px}
+      .topbar .actions{
+        width:100%;
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+      }
+      .topbar .actions button{
+        width:100%;
+        min-height:42px;
+      }
+      .layout{
+        padding:12px;
+        gap:12px;
+      }
+      .sidebar{
+        position:fixed !important;
+        top:0;
+        right:0;
+        bottom:0;
+        width:min(82vw,320px);
+        max-width:320px;
+        border-radius:0;
+        z-index:40;
+        transform:translateX(105%);
+        transition:transform .22s ease;
+        overflow:auto;
+        padding-top:78px;
+      }
+      body.mobile-nav-open .sidebar{transform:translateX(0)}
+      .content{gap:12px}
+      .panel{padding:12px}
+      .section-title{
+        flex-direction:column;
+        align-items:stretch;
+        margin-bottom:12px;
+      }
+      .section-title h2{font-size:18px}
+      .stats{grid-template-columns:1fr 1fr;gap:10px}
+      .stat{padding:12px;border-radius:14px}
+      .stat .value{font-size:22px}
+      .toolbar{
+        display:grid;
+        grid-template-columns:1fr;
+        align-items:stretch;
+      }
+      .toolbar .search{min-width:0}
+      .actions{
+        display:grid;
+        grid-template-columns:1fr 1fr;
+      }
+      .actions > *{width:100%}
+      .summary-grid{grid-template-columns:1fr}
+      .quick-list{padding:12px}
+      .close-row{flex-direction:column;align-items:stretch}
+      .table-wrap{
+        max-height:none;
+        overflow:visible;
+        border-radius:14px;
+      }
+      .table-wrap.responsive-cards{
+        border:none;
+        background:transparent;
+      }
+      .table-wrap.responsive-cards table,
+      .table-wrap.responsive-cards thead,
+      .table-wrap.responsive-cards tbody,
+      .table-wrap.responsive-cards th,
+      .table-wrap.responsive-cards td,
+      .table-wrap.responsive-cards tr{
+        display:block;
+        width:100%;
+      }
+      .table-wrap.responsive-cards table{min-width:0 !important}
+      .table-wrap.responsive-cards thead{
+        position:absolute;
+        width:1px;
+        height:1px;
+        overflow:hidden;
+        clip:rect(0 0 0 0);
+        white-space:nowrap;
+      }
+      .table-wrap.responsive-cards tbody{display:grid;gap:10px}
+      .table-wrap.responsive-cards tr{
+        background:#ffffff;
+        border:2px solid #2cb9c2;
+        border-radius:16px;
+        box-shadow:0 8px 22px rgba(44,185,194,.12);
+        padding:8px 10px;
+      }
+      .table-wrap.responsive-cards td{
+        border:0 !important;
+        border-bottom:1px dashed rgba(44,185,194,.28) !important;
+        padding:10px 2px 10px 0;
+        text-align:right;
+        min-height:40px;
+      }
+      .table-wrap.responsive-cards td:last-child{border-bottom:0 !important}
+      .table-wrap.responsive-cards td::before{
+        content:attr(data-label);
+        display:block;
+        font-size:12px;
+        font-weight:700;
+        margin-bottom:5px;
+        color:#14848b;
+      }
+      .table-wrap.responsive-cards td[data-label=""]::before{display:none}
+      .table-wrap.responsive-cards td .actions{
+        grid-template-columns:1fr;
+      }
+      input,select,textarea,button{
+        font-size:16px;
+      }
+      textarea{min-height:72px}
+      .footer-note{padding:0 12px 24px}
+      .mobile-bottom-spacer{display:block}
+    }
+
+    @media (max-width:560px){
+      .stats{grid-template-columns:1fr}
+      .actions{grid-template-columns:1fr}
+      .topbar .actions{grid-template-columns:1fr}
+      .brand h1{font-size:17px}
+    }
+
+
+    .mobile-bottom-nav{
+      display:none;
+      position:fixed;
+      right:0;left:0;bottom:0;
+      z-index:1200;
+      background:#ffffff;
+      border-top:2px solid #2cb9c2;
+      box-shadow:0 -8px 24px rgba(44,185,194,.16);
+      padding:8px max(10px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+    }
+    .mobile-bottom-nav .mobile-bottom-nav-inner{
+      display:grid;
+      grid-template-columns:repeat(5,minmax(0,1fr));
+      gap:6px;
+    }
+    .mobile-bottom-nav button{
+      min-height:54px;
+      padding:8px 6px;
+      border-radius:14px;
+      font-size:11px;
+      line-height:1.25;
+      box-shadow:none !important;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:4px;
+    }
+    .mobile-bottom-nav button.active{
+      background:#1598a0 !important;
+      font-weight:700;
+    }
+    .mobile-bottom-nav .mini{
+      font-size:18px;
+      line-height:1;
+    }
+    .mobile-section-header{
+      display:none;
+      gap:8px;
+      margin:-4px 0 14px;
+      overflow:auto;
+      padding-bottom:2px;
+      scrollbar-width:none;
+    }
+    .mobile-section-header::-webkit-scrollbar{display:none}
+    .mobile-chip{
+      white-space:nowrap;
+      border:2px solid #2cb9c2;
+      color:#2cb9c2;
+      background:#fff;
+      border-radius:999px;
+      padding:8px 12px;
+      font-size:12px;
+      font-weight:700;
+    }
+    .mobile-chip.active{
+      background:#2cb9c2;
+      color:#fff !important;
+    }
+    .floating-top-btn{
+      display:none;
+      position:fixed;
+      left:16px;
+      bottom:86px;
+      z-index:1200;
+      width:48px;
+      height:48px;
+      border-radius:999px;
+      padding:0;
+      font-size:20px;
+      line-height:1;
+    }
+    @media (max-width:900px){
+      body{padding-bottom:88px}
+      .mobile-bottom-nav{display:block}
+      .floating-top-btn{display:inline-flex;align-items:center;justify-content:center}
+      .mobile-section-header{display:flex}
+      .section-title{margin-bottom:10px}
+      .section-title h2{font-size:18px}
+      .card.panel.section-page{padding:12px}
+      .toolbar{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
+      .toolbar .search{grid-column:1/-1;min-width:0}
+      .toolbar select{max-width:none !important}
+      .toolbar button,.toolbar select,.toolbar input{min-height:44px}
+      .summary-actions{flex-direction:column}
+      .summary-actions button{width:100%}
+      .quick-list{padding:12px}
+      .actions{display:grid;grid-template-columns:1fr 1fr}
+      .actions .small{width:100%}
+    }
+    @media (max-width:560px){
+      .mobile-bottom-nav .mobile-bottom-nav-inner{grid-template-columns:repeat(4,minmax(0,1fr))}
+      .mobile-bottom-nav button.more-tab{display:flex}
+      .toolbar{grid-template-columns:1fr}
+      .actions{grid-template-columns:1fr}
+      .summary-grid{grid-template-columns:1fr}
+      .table-wrap{border-radius:14px}
+    }
+
+
+/* === Mobile app-like upgrade v3 === */
+.mobile-fab{display:none}
+.mobile-fab-sheet{display:none}
+.mobile-fab-backdrop{display:none}
+@media (max-width:900px){
+  body{
+    background:#f7ffff;
+  }
+  .content{
+    gap:12px;
+    padding-bottom:110px;
+  }
+  .section-page.card{
+    border-radius:22px !important;
+    box-shadow:0 14px 32px rgba(44,185,194,.10) !important;
+  }
+  .section-title{
+    position:sticky;
+    top:66px;
+    z-index:25;
+    background:rgba(255,255,255,.96);
+    backdrop-filter:blur(8px);
+    padding:10px 0 8px;
+    margin:-4px 0 10px;
+  }
+  .toolbar{
+    position:sticky;
+    top:136px;
+    z-index:24;
+    background:#ffffff;
+    padding:10px;
+    border:1px solid rgba(44,185,194,.18);
+    border-radius:16px;
+    box-shadow:0 8px 18px rgba(44,185,194,.08);
+  }
+  .toolbar .search{
+    min-width:100%;
+  }
+  .toolbar > *{
+    flex:1 1 calc(50% - 10px);
+  }
+  .toolbar button,
+  .toolbar select,
+  .toolbar input{
+    min-height:46px;
+  }
+  .summary-grid{
+    grid-template-columns:1fr;
+  }
+  .summary-card{
+    border-radius:16px;
+    box-shadow:0 6px 16px rgba(44,185,194,.07);
+  }
+  .quick-list{
+    border-width:1px;
+    box-shadow:0 8px 20px rgba(44,185,194,.08);
+  }
+  .table-wrap.responsive-cards{
+    border:none !important;
+    background:transparent !important;
+    max-height:none !important;
+    overflow:visible !important;
+  }
+  .table-wrap.responsive-cards table,
+  .table-wrap.responsive-cards thead,
+  .table-wrap.responsive-cards tbody,
+  .table-wrap.responsive-cards th,
+  .table-wrap.responsive-cards td,
+  .table-wrap.responsive-cards tr{
+    display:block;
+    width:100%;
+  }
+  .table-wrap.responsive-cards thead{
+    display:none;
+  }
+  .table-wrap.responsive-cards tbody{
+    display:grid;
+    gap:12px;
+  }
+  .table-wrap.responsive-cards tbody tr{
+    background:#ffffff;
+    border:1px solid rgba(44,185,194,.22);
+    border-radius:18px;
+    padding:12px 12px 10px;
+    box-shadow:0 10px 22px rgba(44,185,194,.08);
+  }
+  .table-wrap.responsive-cards tbody td{
+    border-bottom:none !important;
+    padding:8px 0;
+    min-height:unset;
+  }
+  .table-wrap.responsive-cards tbody td::before{
+    content:attr(data-label);
+    display:block;
+    font-size:11px;
+    font-weight:700;
+    color:#5aaeb4 !important;
+    margin-bottom:4px;
+  }
+  .table-wrap.responsive-cards tbody td:empty{
+    display:none;
+  }
+  .table-wrap.responsive-cards tbody td .actions{
+    gap:8px;
+  }
+  .table-wrap.responsive-cards tbody td .actions button{
+    flex:1 1 calc(50% - 8px);
+    min-height:42px;
+  }
+  .table-wrap.responsive-cards tbody td[data-label="إجراءات"],
+  .table-wrap.responsive-cards tbody td[data-label="الاجراءات"],
+  .table-wrap.responsive-cards tbody td[data-label="العمليات"]{
+    margin-top:4px;
+    padding-top:10px;
+    border-top:1px dashed rgba(44,185,194,.28);
+  }
+  .mobile-fab{
+    display:inline-flex;
+    position:fixed;
+    left:16px;
+    bottom:84px;
+    z-index:1205;
+    width:58px;
+    height:58px;
+    align-items:center;
+    justify-content:center;
+    border-radius:999px;
+    font-size:28px;
+    box-shadow:0 16px 30px rgba(44,185,194,.28);
+  }
+  .mobile-fab .fab-icon{
+    line-height:1;
+    transform:translateY(-1px);
+  }
+  .mobile-fab-backdrop{
+    position:fixed;
+    inset:0;
+    background:rgba(2,6,23,.35);
+    z-index:1206;
+  }
+  .mobile-fab-sheet{
+    position:fixed;
+    left:12px;
+    right:12px;
+    bottom:150px;
+    z-index:1207;
+    background:#ffffff;
+    border:1px solid rgba(44,185,194,.25);
+    border-radius:22px;
+    box-shadow:0 20px 38px rgba(15,23,42,.18);
+    padding:14px;
+  }
+  .mobile-fab-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    margin-bottom:10px;
+  }
+  .mobile-fab-title{
+    font-size:15px;
+    font-weight:700;
+  }
+  .mobile-fab-grid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+  }
+  .mobile-fab-action{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    justify-content:center;
+    gap:4px;
+    min-height:70px;
+    padding:12px 14px;
+    border-radius:16px;
+    border:1px solid rgba(44,185,194,.18);
+    background:#f9ffff;
+    color:#2cb9c2;
+    font-weight:700;
+    box-shadow:none !important;
+  }
+  .mobile-fab-action small{
+    font-size:11px;
+    font-weight:400;
+    opacity:.9;
+  }
+  body.mobile-fab-open .mobile-fab-backdrop,
+  body.mobile-fab-open .mobile-fab-sheet{
+    display:block;
+  }
+}
+
 </style>
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js">
+
+    // ===== مساعدات واجهة الموبايل =====
+    function isMobileLayout(){
+      return window.innerWidth <= 900;
+    }
+
+    function toggleMobileNav(){
+      if(!isMobileLayout()) return;
+      document.body.classList.toggle('mobile-nav-open');
+      const backdrop = document.querySelector('.mobile-nav-backdrop');
+      if(backdrop){
+        backdrop.classList.toggle('show', document.body.classList.contains('mobile-nav-open'));
+      }
+    }
+
+    function closeMobileNav(){
+      document.body.classList.remove('mobile-nav-open');
+      const backdrop = document.querySelector('.mobile-nav-backdrop');
+      if(backdrop) backdrop.classList.remove('show');
+    }
+
+    function prepareResponsiveTables(root=document){
+      const wraps = root.querySelectorAll('.table-wrap');
+      wraps.forEach(wrap => {
+        const table = wrap.querySelector('table');
+        if(!table) return;
+        const heads = Array.from(table.querySelectorAll('thead th')).map(th => (th.textContent || '').trim());
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+          Array.from(row.children).forEach((cell, idx) => {
+            if(!(cell instanceof HTMLElement)) return;
+            if(!cell.hasAttribute('data-label')){
+              cell.setAttribute('data-label', heads[idx] || '');
+            } else if(!cell.getAttribute('data-label')){
+              cell.setAttribute('data-label', heads[idx] || '');
+            }
+          });
+        });
+
+        const colCount = heads.length || (table.rows[0] ? table.rows[0].cells.length : 0);
+        const hasActions = heads.some(h => /إجراء|إجراءات|الاجراء|العمليات/i.test(h));
+        const forceCards = colCount >= 4 || hasActions || wrap.classList.contains('force-mobile-cards');
+        wrap.classList.toggle('responsive-cards', isMobileLayout() && forceCards);
+        wrap.classList.toggle('compact-mobile', isMobileLayout() && !forceCards);
+      });
+    }
+
+    function enhanceMobileUI(root=document){
+      prepareResponsiveTables(root);
+      if(!isMobileLayout()){
+        closeMobileNav();
+      closeMobileFab();
+      }
+      const navButtons = document.querySelectorAll('#navButtons button');
+      navButtons.forEach(btn => {
+        if(!btn.dataset.mobileCloseBound){
+          btn.addEventListener('click', () => {
+            if(isMobileLayout()) closeMobileNav();
+          });
+          btn.dataset.mobileCloseBound = '1';
+        }
+      });
+    }
+
+    const __mobileObserver = new MutationObserver(() => {
+      clearTimeout(window.__mobileEnhanceTimer);
+      window.__mobileEnhanceTimer = setTimeout(() => enhanceMobileUI(document), 60);
+    });
+
+    window.addEventListener('resize', () => enhanceMobileUI(document));
+    window.addEventListener('orientationchange', () => enhanceMobileUI(document));
+    document.addEventListener('click', (e) => {
+      if(!isMobileLayout()) return;
+      const sidebar = document.querySelector('.sidebar');
+      if(!document.body.classList.contains('mobile-nav-open')) return;
+      if(sidebar && sidebar.contains(e.target)) return;
+      if(e.target.closest('#mobileFab') || e.target.closest('#mobileFabSheet')) return;
+      if(e.target.closest('.mobile-menu-btn')) return;
+      if(e.target.closest('.scanner-card')) return;
+      closeMobileNav();
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      enhanceMobileUI(document);
+      __mobileObserver.observe(document.body, {childList:true, subtree:true});
+    });
+
+</script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -439,6 +1047,7 @@
 
     <section id="appView" class="hidden">
       <div class="topbar">
+        <button class="mobile-menu-btn" type="button" onclick="toggleMobileNav()">☰</button>
         <div class="brand">
           <h1>نظام استلام وصيانة وتجهيز الأجهزة</h1>
           <p id="whoami">—</p>
@@ -449,6 +1058,7 @@
           <button class="danger small" onclick="logout()">تسجيل الخروج</button>
         </div>
       </div>
+      <div class="mobile-nav-backdrop" onclick="closeMobileNav()"></div>
 
       <div class="layout">
         <aside class="sidebar card">
@@ -468,7 +1078,22 @@
           <section id="returnsSection" class="card panel section-page hidden"></section>
         </main>
       </div>
+      <div class="mobile-bottom-spacer"></div>
       <div class="footer-note">هذه النسخة مهيأة للعمل مع Supabase عبر الجداول: devices / supply_requests / part_slips / completions مع حفظ محلي احتياطي داخل المتصفح عند الحاجة. — إصدار إصلاح طلبات التجهيز V6</div>
+      <div id="mobileBottomNav" class="mobile-bottom-nav"></div>
+
+      <button id="mobileFab" class="mobile-fab" type="button" onclick="toggleMobileFab()"><span class="fab-icon">+</span></button>
+      <div id="mobileFabBackdrop" class="mobile-fab-backdrop" onclick="closeMobileFab()"></div>
+      <div id="mobileFabSheet" class="mobile-fab-sheet">
+        <div class="mobile-fab-header">
+          <div class="mobile-fab-title">اختصارات سريعة</div>
+          <button type="button" class="small secondary" onclick="closeMobileFab()">إغلاق</button>
+        </div>
+        <div id="mobileFabGrid" class="mobile-fab-grid"></div>
+      </div>
+
+      <button id="floatingTopBtn" class="floating-top-btn" type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
     </section>
   </div>
     <div id="scannerModal" class="scanner-modal">
@@ -517,6 +1142,15 @@
     ensureBarcodeValues();
     let currentUser = null;
     let currentSection = 'dashboard';
+    function toggleMobileNav(){
+      document.body.classList.toggle('mobile-nav-open');
+    }
+    function closeMobileNav(){
+      document.body.classList.remove('mobile-nav-open');
+    }
+    window.addEventListener('resize', () => {
+      if(window.innerWidth > 900) closeMobileNav();
+    });
     let dashboardSelectedDate = null;
     let dashboardOpenQuickListType = '';
     let dashboardQuickListPinned = false;
@@ -2204,6 +2838,7 @@ const deviceStatusMap = {
         return `<button id="nav_${key}" onclick="openSection('${key}')">${label}</button>`;
       }).join('');
       document.getElementById('navButtons').innerHTML = html;
+      buildMobileBottomNav();
     }
 
     async function refreshArrayTablesFromSupabase(){
@@ -2235,8 +2870,200 @@ const deviceStatusMap = {
       }
     }
 
+
+    function buildMobileSectionChips(){
+      if(!currentUser) return '';
+      const items = {
+        dashboard:'لوحة التحكم',
+        shopReceive:'استلام',
+        devices:'الأجهزة',
+        supplyRequests:'التجهيز',
+        company:'الشركة',
+        technician:'الصيانة',
+        completion:'الإتمام',
+        delivery:'التسليم',
+        returns:'الإرجاع'
+      };
+      return `<div class="mobile-section-header">` + allowedSections().map(key => `
+        <button type="button" class="mobile-chip ${currentSection === key ? 'active' : ''}" onclick="openSection('${key}')">${items[key] || key}</button>
+      `).join('') + `</div>`;
+    }
+
+    function buildMobileBottomNav(){
+      const container = document.getElementById('mobileBottomNav');
+      if(!container || !currentUser){
+        if(container) container.innerHTML = '';
+        return;
+      }
+      const iconMap = {
+        dashboard:'⌂',
+        shopReceive:'＋',
+        devices:'▤',
+        supplyRequests:'🧾',
+        company:'🏢',
+        technician:'🛠',
+        completion:'✓',
+        delivery:'🚚',
+        returns:'↺'
+      };
+      const labelMap = {
+        dashboard:'الرئيسية',
+        shopReceive:'استلام',
+        devices:'الأجهزة',
+        supplyRequests:'التجهيز',
+        company:'الشركة',
+        technician:'الصيانة',
+        completion:'الإتمام',
+        delivery:'التسليم',
+        returns:'الإرجاع'
+      };
+      const allowed = allowedSections();
+      const priority = ['dashboard','devices','shopReceive','delivery','more'];
+      let visible = allowed.filter(k => priority.includes(k)).slice(0,4);
+      if(!visible.includes('dashboard') && allowed.includes('dashboard')) visible.unshift('dashboard');
+      visible = visible.slice(0,4);
+      const hasMore = allowed.some(k => !visible.includes(k));
+      const buttons = visible.map(key => `
+        <button type="button" class="${currentSection === key ? 'active' : ''}" onclick="openSection('${key}')">
+          <span class="mini">${iconMap[key] || '•'}</span>
+          <span>${labelMap[key] || key}</span>
+        </button>
+      `);
+      if(hasMore){
+        buttons.push(`
+          <button type="button" class="more-tab" onclick="toggleMobileNav()">
+            <span class="mini">☰</span>
+            <span>المزيد</span>
+          </button>
+        `);
+      } else if(buttons.length < 5){
+        buttons.push(`
+          <button type="button" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+            <span class="mini">↑</span>
+            <span>أعلى</span>
+          </button>
+        `);
+      }
+      container.innerHTML = `<div class="mobile-bottom-nav-inner">${buttons.join('')}</div>`;
+    }
+
+    function injectMobileSectionHeaders(){
+      if(!window.innerWidth || window.innerWidth > 900) return;
+      document.querySelectorAll('.section-page').forEach(section => {
+        const title = section.querySelector('.section-title');
+        if(!title || section.querySelector('.mobile-section-header')) return;
+        title.insertAdjacentHTML('beforebegin', buildMobileSectionChips());
+      });
+    }
+
+
+    function isMobileViewActive(){
+      return window.innerWidth <= 900;
+    }
+
+    function getMobileFabActions(){
+      const actions = {
+        dashboard: [
+          {label:'الأجهزة', hint:'قائمة الأجهزة', action:"openSection('devices')"},
+          {label:'الاستلام', hint:'استلام جهاز جديد', action:"openSection('shopReceive')"},
+          {label:'التسليم', hint:'قسم التسليم', action:"openSection('delivery')"},
+          {label:'أعلى', hint:'الرجوع للبداية', action:"window.scrollTo({top:0,behavior:'smooth'})"}
+        ],
+        devices: [
+          {label:'بحث', hint:'تركيز على البحث', action:"document.getElementById('deviceSearchInput')?.focus()"},
+          {label:'كاميرا', hint:'بحث بالباركود', action:"startBarcodeSearch()"},
+          {label:'التسليم', hint:'فتح قسم التسليم', action:"openSection('delivery')"},
+          {label:'الاستلام', hint:'جهاز جديد', action:"openSection('shopReceive')"}
+        ],
+        shopReceive: [
+          {label:'الأجهزة', hint:'عرض كل الأجهزة', action:"openSection('devices')"},
+          {label:'التسليم', hint:'الذهاب للتسليم', action:"openSection('delivery')"},
+          {label:'لوحة التحكم', hint:'الصفحة الرئيسية', action:"openSection('dashboard')"},
+          {label:'أعلى', hint:'الرجوع للبداية', action:"window.scrollTo({top:0,behavior:'smooth'})"}
+        ],
+        supplyRequests: [
+          {label:'الشركة', hint:'طلبات الشركة', action:"openSection('company')"},
+          {label:'الأجهزة', hint:'قائمة الأجهزة', action:"openSection('devices')"},
+          {label:'أعلى', hint:'الرجوع للبداية', action:"window.scrollTo({top:0,behavior:'smooth'})"},
+          {label:'الرئيسية', hint:'لوحة التحكم', action:"openSection('dashboard')"}
+        ],
+        company: [
+          {label:'طلبات التجهيز', hint:'فتح الطلبات', action:"openSection('supplyRequests')"},
+          {label:'التسليم', hint:'فتح قسم التسليم', action:"openSection('delivery')"},
+          {label:'الأجهزة', hint:'كل الأجهزة', action:"openSection('devices')"},
+          {label:'أعلى', hint:'الرجوع للبداية', action:"window.scrollTo({top:0,behavior:'smooth'})"}
+        ],
+        technician: [
+          {label:'الأجهزة', hint:'قائمة الأجهزة', action:"openSection('devices')"},
+          {label:'المكتمل', hint:'صفحة الإكمال', action:"openSection('completion')"},
+          {label:'التجهيز', hint:'طلبات التجهيز', action:"openSection('supplyRequests')"},
+          {label:'أعلى', hint:'الرجوع للبداية', action:"window.scrollTo({top:0,behavior:'smooth'})"}
+        ],
+        completion: [
+          {label:'التسليم', hint:'الانتقال للتسليم', action:"openSection('delivery')"},
+          {label:'الأجهزة', hint:'كل الأجهزة', action:"openSection('devices')"},
+          {label:'الرئيسية', hint:'لوحة التحكم', action:"openSection('dashboard')"},
+          {label:'أعلى', hint:'الرجوع للبداية', action:"window.scrollTo({top:0,behavior:'smooth'})"}
+        ],
+        delivery: [
+          {label:'الأجهزة', hint:'قائمة الأجهزة', action:"openSection('devices')"},
+          {label:'طلبات الإرجاع', hint:'المرتجعات', action:"openSection('returns')"},
+          {label:'الرئيسية', hint:'لوحة التحكم', action:"openSection('dashboard')"},
+          {label:'أعلى', hint:'الرجوع للبداية', action:"window.scrollTo({top:0,behavior:'smooth'})"}
+        ],
+        returns: [
+          {label:'التسليم', hint:'قسم التسليم', action:"openSection('delivery')"},
+          {label:'الأجهزة', hint:'قائمة الأجهزة', action:"openSection('devices')"},
+          {label:'الرئيسية', hint:'لوحة التحكم', action:"openSection('dashboard')"},
+          {label:'أعلى', hint:'الرجوع للبداية', action:"window.scrollTo({top:0,behavior:'smooth'})"}
+        ]
+      };
+      return actions[currentSection] || actions.dashboard;
+    }
+
+    function renderMobileFab(){
+      const fab = document.getElementById('mobileFab');
+      const grid = document.getElementById('mobileFabGrid');
+      if(!fab || !grid) return;
+      if(!isMobileViewActive()){
+        fab.style.display = 'none';
+        closeMobileFab();
+        return;
+      }
+      fab.style.display = 'inline-flex';
+      const items = getMobileFabActions();
+      grid.innerHTML = items.map(item => `
+        <button type="button" class="mobile-fab-action" onclick="closeMobileFab(); ${item.action}">
+          <span>${item.label}</span>
+          <small>${item.hint}</small>
+        </button>
+      `).join('');
+    }
+
+    function toggleMobileFab(){
+      if(!isMobileViewActive()) return;
+      document.body.classList.toggle('mobile-fab-open');
+      renderMobileFab();
+    }
+
+    function closeMobileFab(){
+      document.body.classList.remove('mobile-fab-open');
+    }
+
+
+    function refreshMobileUX(){
+      buildMobileBottomNav();
+      injectMobileSectionHeaders();
+      renderMobileFab();
+      const topBtn = document.getElementById('floatingTopBtn');
+      if(topBtn){
+        topBtn.style.display = window.innerWidth <= 900 ? 'inline-flex' : 'none';
+      }
+    }
+
     async function openSection(section){
       currentSection = section;
+      closeMobileNav();
       if(APP_CONFIG.dataProvider === 'supabase') {
         await refreshDevicesFromSupabase();
         if(section === 'company' || section === 'supplyRequests' || section === 'technician' || section === 'completion' || section === 'returns'){
@@ -2260,6 +3087,8 @@ const deviceStatusMap = {
       const navBtn = document.getElementById('nav_' + section);
       if(navBtn) navBtn.classList.add('active');
       renderAll();
+      refreshMobileUX();
+      window.scrollTo({top:0, behavior:'smooth'});
     }
 
     function renderAll(){
@@ -2273,6 +3102,7 @@ const deviceStatusMap = {
       renderCompletion();
       renderDelivery();
       renderReturns();
+      refreshMobileUX();
 
       setTimeout(() => {
         showSmartAlertsAsPopup();
@@ -2929,6 +3759,7 @@ const deviceStatusMap = {
     }
 
     function renderDashboard(){
+      const mobileChips = buildMobileSectionChips();
       const selectedDate = getDashboardSelectedDate();
       const selectedDateLabel = formatDashboardSelectedDateLabel(selectedDate);
       const now = new Date();
@@ -3030,6 +3861,7 @@ const deviceStatusMap = {
     }
 
 function renderShopReceive(){
+      const mobileChips = buildMobileSectionChips();
       refreshDeviceBrandList();
       const editableRows = getReceiptEditableDevices().map(d => `
         <tr>
@@ -3390,6 +4222,7 @@ function renderShopReceive(){
     }
 
 function renderDevices(){
+      const mobileChips = buildMobileSectionChips();
       const section = document.getElementById('devicesSection');
       if(!section) return;
 
@@ -3509,7 +4342,7 @@ function renderDevices(){
         </tr>
       `}).join('');
 
-      section.innerHTML = `
+      section.innerHTML = `${mobileChips}
         <div class="section-title">
           <div>
             <h2>قائمة الأجهزة</h2>
@@ -4002,6 +4835,7 @@ window.addEventListener('load', function(){
     }
 
     function renderSupplyRequests(){
+      const mobileChips = buildMobileSectionChips();
       const availableDevices = getAvailableSupplyDevices();
       const options = availableDevices.map(d => `
         <option value="${escapeHtml(d.id)}">${escapeHtml(d.receiptNumber)} — ${escapeHtml(d.customerName)} — ${escapeHtml(d.deviceType)}</option>
@@ -4357,6 +5191,7 @@ window.addEventListener('load', function(){
     }
 
     function renderCompany(){
+      const mobileChips = buildMobileSectionChips();
       const companyRequests = (Array.isArray(db.supplyRequests) ? db.supplyRequests : [])
         .map(normalizeCompanyRequestRow)
         .filter(Boolean)
@@ -4586,6 +5421,7 @@ window.addEventListener('load', function(){
     }
 
     function renderTechnician(){
+      const mobileChips = buildMobileSectionChips();
       const pendingParts = db.partSlips.filter(p => ['pending','rejected_return'].includes(p.status));
       const rows = pendingParts.map(p => `
         <tr>
@@ -4783,6 +5619,7 @@ window.addEventListener('load', function(){
     }
 
     function renderCompletion(){
+      const mobileChips = buildMobileSectionChips();
       const availableDevices = getCompletionEligibleDevices();
       const options = availableDevices.map(d => {
         const pendingCount = getPendingDevicePartSlips(d.id).length;
@@ -5078,6 +5915,7 @@ window.addEventListener('load', function(){
     }
 
     function renderReturns(){
+      const mobileChips = buildMobileSectionChips();
       const partRows = db.partSlips.filter(p => ['return_requested','returned','rejected_return'].includes(p.status)).map(p => `
         <tr>
           <td>${escapeHtml(p.salesInvoiceNumber || '—')}</td>
@@ -5229,6 +6067,7 @@ window.addEventListener('load', function(){
     }
 
     function renderDelivery(){
+      const mobileChips = buildMobileSectionChips();
       const rows = db.devices
         .filter(d => ['complete','not_repaired','delivered_company','delivered_customer','delivered'].includes(d.status))
         .map(d => {
