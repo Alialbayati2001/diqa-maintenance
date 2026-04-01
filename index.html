@@ -2761,11 +2761,8 @@ const deviceStatusMap = {
       if(!newAlerts.length) return;
 
       alert(
-        'التنبيهات الذكية:
-
-' +
-        newAlerts.map((a, i) => `${i + 1}- ${a.text}`).join('
-')
+        'التنبيهات الذكية:\n\n' +
+        newAlerts.map((a, i) => `${i + 1}- ${a.text}`).join('\n')
       );
 
       saveTodaySeenAlertKeys([
