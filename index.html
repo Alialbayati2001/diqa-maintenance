@@ -2133,6 +2133,7 @@ const deviceStatusMap = {
     }
 
     function renderAll(){
+      resetSeenSmartAlerts();
       renderDashboard();
       renderShopReceive();
       renderDevices();
@@ -2142,6 +2143,10 @@ const deviceStatusMap = {
       renderCompletion();
       renderDelivery();
       renderReturns();
+
+      setTimeout(() => {
+        showSmartAlertsAsPopup();
+      }, 100);
     }
 
     function formatMoneyIQD(value){
@@ -2413,6 +2418,25 @@ const deviceStatusMap = {
       return db.partSlips.filter(x => x.status === 'pending');
     }
 
+    function getAwaitingApprovalDevices(){
+      return (db.devices || [])
+        .filter(d => d.status === 'await_approval')
+        .sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+    }
+
+    function getInMaintenanceDevices(){
+      return (db.devices || [])
+        .filter(d => d.status !== 'await_approval')
+        .filter(d => !['complete', 'delivered', 'delivered_customer', 'delivered_company', 'not_repaired'].includes(d.status))
+        .sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+    }
+
+    function getReadyNotDeliveredDevices(){
+      return (db.devices || [])
+        .filter(d => d.status === 'complete')
+        .sort((a,b) => new Date(b.completedAt || b.updatedAt || b.createdAt || 0) - new Date(a.completedAt || a.updatedAt || a.createdAt || 0));
+    }
+
     function closeDashboardQuickList(){
       const box = document.getElementById('dashboardQuickList');
       if(box) box.innerHTML = '';
@@ -2571,6 +2595,12 @@ const deviceStatusMap = {
         html = renderQuickPartSlipsTable('الوصولات المعلقة عند الفني', getPendingTechnicianSlips());
       }else if(type === 'missing_parts'){
         html = renderQuickMissingPartsTable('كل نواقص قطع الغيار المطلوبة من الصيانة', true);
+      }else if(type === 'await_approval'){
+        html = renderQuickDevicesTable('الأجهزة بانتظار موافقة الزبون', getAwaitingApprovalDevices());
+      }else if(type === 'in_maintenance'){
+        html = renderQuickDevicesTable('الأجهزة قيد الصيانة', getInMaintenanceDevices());
+      }else if(type === 'ready_not_delivered'){
+        html = renderQuickDevicesTable('الأجهزة الجاهزة غير المسلمة', getReadyNotDeliveredDevices());
       }
 
       const box = document.getElementById('dashboardQuickList');
@@ -2681,34 +2711,78 @@ const deviceStatusMap = {
       return alerts;
     }
 
-    function renderSmartAlerts(){
-      const alerts = getSmartAlerts();
-      if(!alerts.length){
-        return `
-          <div class="quick-list" style="border-color:#2cb9c2;margin-top:0">
-            <div class="close-row">
-              <h3>التنبيهات الذكية</h3>
-            </div>
-            <div class="hint">لا توجد تنبيهات حالياً</div>
-          </div>
-        `;
+    const SMART_ALERTS_SEEN_KEY = 'repairSystemDemo_seenSmartAlerts_v2';
+
+    function getTodayKey(){
+      return getIraqTodayDate();
+    }
+
+    function getSeenSmartAlertsState(){
+      try{
+        return JSON.parse(localStorage.getItem(SMART_ALERTS_SEEN_KEY) || '{}');
+      }catch{
+        return {};
+      }
+    }
+
+    function saveSeenSmartAlertsState(state){
+      localStorage.setItem(SMART_ALERTS_SEEN_KEY, JSON.stringify(state || {}));
+    }
+
+    function buildSmartAlertKey(alertObj){
+      return `${alertObj.type}::${alertObj.text}`;
+    }
+
+    function getTodaySeenAlertKeys(){
+      const state = getSeenSmartAlertsState();
+      const todayKey = getTodayKey();
+
+      if(state.day !== todayKey){
+        return [];
       }
 
-      return `
-        <div class="quick-list" style="border-color:#ea353c;margin-top:0">
-          <div class="close-row">
-            <h3>التنبيهات الذكية</h3>
-            <span class="notif">${alerts.length}</span>
-          </div>
-          <div style="display:grid;gap:8px">
-            ${alerts.map(a => `
-              <div style="padding:10px 12px;border:1px solid #ea353c;border-radius:12px;background:rgba(234,53,60,.08);font-weight:700">
-                ${a.text}
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `;
+      return Array.isArray(state.keys) ? state.keys : [];
+    }
+
+    function saveTodaySeenAlertKeys(keys){
+      saveSeenSmartAlertsState({
+        day: getTodayKey(),
+        keys: keys || []
+      });
+    }
+
+    function showSmartAlertsAsPopup(){
+      const alerts = getSmartAlerts();
+      if(!alerts.length) return;
+
+      const seenToday = getTodaySeenAlertKeys();
+      const newAlerts = alerts.filter(a => !seenToday.includes(buildSmartAlertKey(a)));
+
+      if(!newAlerts.length) return;
+
+      alert(
+        'التنبيهات الذكية:
+
+' +
+        newAlerts.map((a, i) => `${i + 1}- ${a.text}`).join('
+')
+      );
+
+      saveTodaySeenAlertKeys([
+        ...seenToday,
+        ...newAlerts.map(buildSmartAlertKey)
+      ]);
+    }
+
+    function resetSeenSmartAlerts(){
+      const todayKeys = getTodaySeenAlertKeys();
+      const currentKeys = getSmartAlerts().map(buildSmartAlertKey);
+      const filtered = todayKeys.filter(key => currentKeys.includes(key));
+      saveTodaySeenAlertKeys(filtered);
+    }
+
+    function renderSmartAlerts(){
+      return '';
     }
 
     function renderDashboard(){
@@ -2723,6 +2797,9 @@ const deviceStatusMap = {
       const completedToday = getSelectedDateCompletedDevices().length;
       const deliveredToday = getSelectedDateDeliveredDevices().length;
       const notRepairedToday = getSelectedDateNotRepairedDevices().length;
+      const awaitApprovalCount = getAwaitingApprovalDevices().length;
+      const inMaintenanceCount = getInMaintenanceDevices().length;
+      const readyNotDeliveredCount = getReadyNotDeliveredDevices().length;
       const overdueDevices = db.devices.filter(d => {
         if(!d.createdAt) return false;
         const ageDays = (now - new Date(d.createdAt)) / (1000 * 60 * 60 * 24);
@@ -2765,6 +2842,9 @@ const deviceStatusMap = {
           <div class="stat clickable" onclick="openDashboardQuickList('completed_today')"><div class="label">مكتمل هذا اليوم</div><div class="value">${completedToday}</div></div>
           <div class="stat clickable" onclick="openDashboardQuickList('delivered_today')"><div class="label">تم التسليم في هذا اليوم</div><div class="value">${deliveredToday}</div></div>
           <div class="stat clickable" onclick="openDashboardQuickList('not_repaired_today')"><div class="label">لم يتم التصليح في هذا اليوم</div><div class="value">${notRepairedToday}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('await_approval')"><div class="label">أجهزة بانتظار موافقة الزبون</div><div class="value">${awaitApprovalCount}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('in_maintenance')"><div class="label">الأجهزة قيد الصيانة</div><div class="value">${inMaintenanceCount}</div></div>
+          <div class="stat clickable" onclick="openDashboardQuickList('ready_not_delivered')"><div class="label">الأجهزة الجاهزة غير المسلمة</div><div class="value">${readyNotDeliveredCount}</div></div>
           <div class="stat clickable" onclick="openDashboardQuickList('overdue')"><div class="label">الأجهزة المتأخرة</div><div class="value">${overdueDevices}</div></div>
           <div class="stat"><div class="label">طلبات تجهيز بانتظار الشركة</div><div class="value">${pendingSupply}</div></div>
           <div class="stat clickable" onclick="openDashboardQuickList('pending_parts')"><div class="label">وصولات معلقة عند الفني</div><div class="value">${pendingParts}</div></div>
