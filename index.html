@@ -8,7 +8,7 @@
     :root{
       --bg:#ffffff;
       --panel:#ffffff;
-      --panel-2:#ffffff;a
+      --panel-2:#ffffff;
       --line:#2cb9c2;
       --text:#2cb9c2;
       --muted:#2cb9c2;
@@ -922,6 +922,84 @@
   body.mobile-fab-open .mobile-fab-backdrop,
   body.mobile-fab-open .mobile-fab-sheet{
     display:block;
+  }
+}
+
+
+/* ===== تحسين تباين النصوص للموبايل فقط ===== */
+@media (max-width: 900px){
+  body,
+  .content,
+  .panel,
+  .card,
+  .section-title p,
+  .hint,
+  .muted,
+  .footer-note,
+  td,
+  .field-value,
+  .summary-card .v,
+  .summary-card .k,
+  .quick-list,
+  .quick-list *:not(button):not(.badge),
+  .table-wrap,
+  .table-wrap td,
+  .table-wrap div,
+  .table-wrap span,
+  .table-wrap p,
+  .scanner-status{
+    color:#1f2937 !important;
+  }
+
+  h1,h2,h3,h4,h5,h6,
+  .section-title h2,
+  .brand h1{
+    color:#0f172a !important;
+  }
+
+  label{
+    color:#334155 !important;
+  }
+
+  input, textarea, select{
+    color:#0f172a !important;
+    background:#ffffff !important;
+  }
+
+  input::placeholder,
+  textarea::placeholder{
+    color:#64748b !important;
+  }
+
+  .card,
+  .panel,
+  .summary-card,
+  .quick-list,
+  .scanner-card,
+  .stat{
+    background:#ffffff !important;
+  }
+
+  .stat .label{
+    color:#475569 !important;
+  }
+
+  .stat .value{
+    color:#0f172a !important;
+  }
+
+  .nav button,
+  .nav button.active,
+  .mobile-bottom-nav button,
+  .fab-menu button,
+  .topbar button,
+  button,
+  .badge{
+    color:#ffffff !important;
+  }
+
+  th{
+    color:#ffffff !important;
   }
 }
 
