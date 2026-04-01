@@ -342,6 +342,69 @@
 }
 }
 
+
+    .toast-wrap{
+      position:fixed;
+      left:18px;
+      bottom:18px;
+      z-index:9999;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      width:min(420px, calc(100vw - 36px));
+      pointer-events:none;
+    }
+    .toast{
+      pointer-events:auto;
+      background:#ffffff;
+      border:2px solid #2cb9c2;
+      border-radius:16px;
+      box-shadow:0 14px 30px rgba(44,185,194,0.18);
+      padding:14px;
+      color:#2cb9c2;
+      animation:toastIn .18s ease;
+    }
+    .toast.warning{
+      border-color:#ea353c;
+      box-shadow:0 14px 30px rgba(234,53,60,0.18);
+    }
+    .toast-title{
+      font-weight:700;
+      margin-bottom:6px;
+      font-size:15px;
+    }
+    .toast-body{
+      font-size:13px;
+      line-height:1.7;
+      white-space:pre-line;
+    }
+    .toast-actions{
+      display:flex;
+      gap:8px;
+      justify-content:flex-start;
+      margin-top:12px;
+      flex-wrap:wrap;
+    }
+    .toast .secondary-btn{
+      background:#ffffff !important;
+      color:#2cb9c2 !important;
+      border:2px solid #2cb9c2 !important;
+      box-shadow:none !important;
+    }
+    .toast.warning .secondary-btn{
+      color:#ea353c !important;
+      border-color:#ea353c !important;
+    }
+    .toast-closing{
+      opacity:0;
+      transform:translateY(8px);
+      transition:.18s ease;
+    }
+    @keyframes toastIn{
+      from{opacity:0;transform:translateY(14px)}
+      to{opacity:1;transform:translateY(0)}
+    }
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
@@ -426,6 +489,9 @@
         </div>
       </div>
     </div>
+
+
+    <div id="toastWrap" class="toast-wrap"></div>
 
   <script>
     const STORAGE_KEY = 'repairSystemDemo_v1';
@@ -1882,6 +1948,68 @@ const APP_CONFIG = {
     }
 
     
+
+    let activeDecisionToast = null;
+
+    function escapeToastHtml(value=''){
+      return escapeHtml(String(value || '')).replace(/\n/g, '<br>');
+    }
+
+    function closeToast(el){
+      if(!el) return;
+      el.classList.add('toast-closing');
+      setTimeout(() => {
+        if(el && el.parentNode) el.parentNode.removeChild(el);
+      }, 180);
+    }
+
+    function showToast(message, type='info', duration=2600, title=''){
+      const wrap = document.getElementById('toastWrap');
+      if(!wrap) return;
+      const toast = document.createElement('div');
+      toast.className = `toast ${type === 'warning' ? 'warning' : ''}`.trim();
+      toast.innerHTML = `
+        ${title ? `<div class="toast-title">${escapeToastHtml(title)}</div>` : ''}
+        <div class="toast-body">${escapeToastHtml(message)}</div>
+      `;
+      wrap.appendChild(toast);
+      if(duration > 0){
+        setTimeout(() => closeToast(toast), duration);
+      }
+      return toast;
+    }
+
+    function showDecisionToast({title='', message='', confirmText='متابعة', cancelText='إلغاء'} = {}){
+      const wrap = document.getElementById('toastWrap');
+      if(!wrap) return Promise.resolve(false);
+      if(activeDecisionToast){
+        closeToast(activeDecisionToast);
+        activeDecisionToast = null;
+      }
+      return new Promise(resolve => {
+        const toast = document.createElement('div');
+        toast.className = 'toast warning';
+        toast.innerHTML = `
+          ${title ? `<div class="toast-title">${escapeToastHtml(title)}</div>` : ''}
+          <div class="toast-body">${escapeToastHtml(message)}</div>
+          <div class="toast-actions">
+            <button type="button" class="small" data-action="confirm">${escapeHtml(confirmText)}</button>
+            <button type="button" class="small secondary-btn" data-action="cancel">${escapeHtml(cancelText)}</button>
+          </div>
+        `;
+        activeDecisionToast = toast;
+        const finish = (value) => {
+          if(activeDecisionToast === toast) activeDecisionToast = null;
+          closeToast(toast);
+          resolve(value);
+        };
+        toast.querySelector('[data-action="confirm"]')?.addEventListener('click', () => finish(true));
+        toast.querySelector('[data-action="cancel"]')?.addEventListener('click', () => finish(false));
+        wrap.appendChild(toast);
+      });
+    }
+
+
     const legacyStatusOptions = [
       {value:'received', label:'مستلم'},
       {value:'await_approval', label:'انتظار موافقة الزبون'},
@@ -3002,13 +3130,19 @@ function renderShopReceive(){
 
       const repeated = findRecentRepeatedFault(customerName, phone, deviceType, faultDescription, editingReceiptId);
       if(repeated){
-        const go = confirm(`⚠️ هذا الجهاز لديه عطل متكرر لنفس الزبون خلال آخر 20 يوم
-
+        const go = await showDecisionToast({
+          title: 'تنبيه تكرار العطل',
+          message: `هذا الجهاز لديه عطل متكرر لنفس الزبون خلال آخر 20 يوم
 رقم الوصل السابق: ${repeated.receiptNumber || '—'}
 العطل السابق: ${repeated.faultDescription || '—'}
-
-هل تريد الاستمرار؟`);
-        if(!go) return;
+هل تريد الاستمرار؟`,
+          confirmText: 'نعم، استمر',
+          cancelText: 'إلغاء'
+        });
+        if(!go){
+          showToast('تم إلغاء الحفظ وبقيت البيانات داخل الحقول.', 'warning', 2600, 'لم يتم الحفظ');
+          return;
+        }
       }
 
       if(editingReceiptId){
@@ -3035,7 +3169,7 @@ function renderShopReceive(){
         await refreshDevicesFromSupabase();
         saveDB();
         editingReceiptId = null;
-        alert('تم تحديث وصل الاستلام بنجاح');
+        showToast('تم تحديث وصل الاستلام بنجاح', 'info', 2600, 'نجاح');
         e.target.reset();
         renderAll();
         openSection('shopReceive');
@@ -3074,7 +3208,7 @@ function renderShopReceive(){
       await DevicesAPI.upsert(db.devices[0]);
       await refreshDevicesFromSupabase();
       saveDB();
-      alert('تم حفظ استلام الجهاز وإرساله للصيانة');
+      showToast('تم حفظ استلام الجهاز وإرساله للصيانة', 'info', 2600, 'نجاح');
       e.target.reset();
       renderAll();
       openSection('devices');
