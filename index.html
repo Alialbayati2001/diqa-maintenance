@@ -3092,8 +3092,28 @@ function renderShopReceive(){
       });
     }
 
+    function getNextReceiptInfo(){
+      const allDevices = Array.isArray(db.devices) ? db.devices : [];
+      const maxReceipt = allDevices.reduce((max, item) => {
+        const direct = Number(item?.receiptSerial);
+        if(Number.isFinite(direct) && direct > max) return direct;
+        const fallback = Number(String(item?.receiptNumber || '').replace(/[^0-9]/g, ''));
+        return Number.isFinite(fallback) && fallback > max ? fallback : max;
+      }, 0);
+      db.counters = db.counters || { receipt: 1 };
+      const counterValue = Number(db.counters.receipt || 1);
+      const nextReceipt = Math.max(maxReceipt + 1, counterValue, 1);
+      return {
+        nextReceipt,
+        autoNumber: String(nextReceipt),
+        barcodeValue: buildBarcodeValue(String(nextReceipt))
+      };
+    }
+
     async function createDevice(e){
       e.preventDefault();
+      const submitBtn = e.submitter || e.target.querySelector('button[type="submit"], button:not([type])');
+      if(submitBtn) submitBtn.disabled = true;
       const customerName = document.getElementById('customerName').value.trim();
       const phone = document.getElementById('phone').value.trim();
       const deviceType = normalizeBrandInput(document.getElementById('deviceType').value.trim());
@@ -3128,93 +3148,104 @@ function renderShopReceive(){
         return;
       }
 
-      const repeated = findRecentRepeatedFault(customerName, phone, deviceType, faultDescription, editingReceiptId);
-      if(repeated){
-        const go = await showDecisionToast({
-          title: 'تنبيه تكرار العطل',
-          message: `هذا الجهاز لديه عطل متكرر لنفس الزبون خلال آخر 20 يوم
+      try {
+        const repeated = findRecentRepeatedFault(customerName, phone, deviceType, faultDescription, editingReceiptId);
+        if(repeated){
+          const go = await showDecisionToast({
+            title: 'تنبيه تكرار العطل',
+            message: `هذا الجهاز لديه عطل متكرر لنفس الزبون خلال آخر 20 يوم
 رقم الوصل السابق: ${repeated.receiptNumber || '—'}
 العطل السابق: ${repeated.faultDescription || '—'}
 هل تريد الاستمرار؟`,
-          confirmText: 'نعم، استمر',
-          cancelText: 'إلغاء'
-        });
-        if(!go){
-          showToast('تم إلغاء الحفظ وبقيت البيانات داخل الحقول.', 'warning', 2600, 'لم يتم الحفظ');
-          return;
+            confirmText: 'نعم، استمر',
+            cancelText: 'إلغاء'
+          });
+          if(!go){
+            showToast('تم إلغاء الحفظ وبقيت البيانات داخل الحقول.', 'warning', 2600, 'لم يتم الحفظ');
+            return;
+          }
         }
-      }
 
-      if(editingReceiptId){
-        const current = db.devices.find(x => x.id === editingReceiptId);
-        if(!current){
-          alert('تعذر العثور على الوصل المطلوب تعديله');
+        if(editingReceiptId){
+          const current = db.devices.find(x => x.id === editingReceiptId);
+          if(!current){
+            alert('تعذر العثور على الوصل المطلوب تعديله');
+            editingReceiptId = null;
+            renderShopReceive();
+            return;
+          }
+          current.customerName = customerName;
+          current.phone = phone;
+          current.deviceType = deviceType;
+          current.deviceColor = deviceColor;
+          current.faultDescription = faultDescription;
+          current.accessories = accessories;
+          current.repairAmount = repairAmount;
+          current.receiveDate = receiveDate;
+          current.receiveTime = receiveTime;
+          current.receivedBy = receivedBy;
+          current.updatedAt = nowISO();
+          current.barcodeValue = current.barcodeValue || buildBarcodeValue(current.receiptNumber);
+          await DevicesAPI.upsert(current);
+          await refreshDevicesFromSupabase();
+          saveDB();
           editingReceiptId = null;
-          renderShopReceive();
+          showToast('تم تحديث وصل الاستلام بنجاح', 'info', 2600, 'نجاح');
+          e.target.reset();
+          renderAll();
+          openSection('shopReceive');
           return;
         }
-        current.customerName = customerName;
-        current.phone = phone;
-        current.deviceType = deviceType;
-        current.deviceColor = deviceColor;
-        current.faultDescription = faultDescription;
-        current.accessories = accessories;
-        current.repairAmount = repairAmount;
-        current.receiveDate = receiveDate;
-        current.receiveTime = receiveTime;
-        current.receivedBy = receivedBy;
-        current.updatedAt = nowISO();
-        current.barcodeValue = current.barcodeValue || buildBarcodeValue(current.receiptNumber);
-        await DevicesAPI.upsert(current);
+
+        const receiptInfo = getNextReceiptInfo();
+        const newDevice = {
+          id: uid('dev'),
+          receiptNumber: receiptInfo.autoNumber,
+          barcodeValue: receiptInfo.barcodeValue,
+          receiptSerial: receiptInfo.nextReceipt,
+          customerName,
+          phone,
+          deviceType,
+          deviceColor,
+          faultDescription,
+          accessories,
+          repairAmount,
+          receiveDate,
+          receiveTime,
+          receivedBy,
+          status: 'received',
+          createdAt: nowISO(),
+          updatedAt: nowISO(),
+          completedAt: null,
+          deliveredAt: null,
+          deliveredBy: null,
+          notRepairedAt: null,
+          notRepairReason: ''
+        };
+
+        await DevicesAPI.upsert(newDevice);
+        db.counters = db.counters || { receipt: 1 };
+        db.counters.receipt = receiptInfo.nextReceipt + 1;
+        db.devices.unshift(newDevice);
         await refreshDevicesFromSupabase();
         saveDB();
-        editingReceiptId = null;
-        showToast('تم تحديث وصل الاستلام بنجاح', 'info', 2600, 'نجاح');
+        showToast(`تم حفظ استلام الجهاز بنجاح برقم وصل ${receiptInfo.autoNumber}`, 'info', 2800, 'نجاح');
         e.target.reset();
         renderAll();
-        openSection('shopReceive');
-        return;
+        openSection('devices');
+      } catch(error){
+        console.error('createDevice failed:', error);
+        const rawMessage = String(error?.message || error?.details || error || 'خطأ غير معروف');
+        const friendlyMessage = /duplicate key|unique/i.test(rawMessage)
+          ? 'تعذر الحفظ لأن رقم الوصل أو قيمة فريدة أخرى مكررة في قاعدة البيانات. أصلحت لك طريقة توليد رقم الوصل، وإذا ظهر الخطأ مرة أخرى فهناك قيد فريد آخر في Supabase.'
+          : `فشل حفظ الجهاز: ${rawMessage}`;
+        showToast(friendlyMessage, 'warning', 5000, 'فشل الحفظ');
+      } finally {
+        if(submitBtn) submitBtn.disabled = false;
       }
-
-      db.counters = db.counters || { receipt: 1 };
-      const nextReceipt = Number(db.counters.receipt || 1);
-      const autoNumber = String(nextReceipt);
-      const barcodeValue = buildBarcodeValue(autoNumber);
-      db.counters.receipt = nextReceipt + 1;
-      db.devices.unshift({
-        id: uid('dev'),
-        receiptNumber: autoNumber,
-        barcodeValue,
-        receiptSerial: nextReceipt,
-        customerName,
-        phone,
-        deviceType,
-        deviceColor,
-        faultDescription,
-        accessories,
-        repairAmount,
-        receiveDate,
-        receiveTime,
-        receivedBy,
-        status: 'received',
-        createdAt: nowISO(),
-        updatedAt: nowISO(),
-        completedAt: null,
-        deliveredAt: null,
-        deliveredBy: null,
-        notRepairedAt: null,
-        notRepairReason: ''
-      });
-      await DevicesAPI.upsert(db.devices[0]);
-      await refreshDevicesFromSupabase();
-      saveDB();
-      showToast('تم حفظ استلام الجهاز وإرساله للصيانة', 'info', 2600, 'نجاح');
-      e.target.reset();
-      renderAll();
-      openSection('devices');
     }
 
-    
+    async function addLegacyDevice(){
     async function addLegacyDevice(){
       if(!currentUser || currentUser.role !== 'manager'){
         alert('هذه العملية متاحة للمدير فقط');
