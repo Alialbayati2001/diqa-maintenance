@@ -1003,6 +1003,186 @@
   }
 }
 
+
+
+/* === Mobile full-sections polish v5 === */
+@media (max-width:900px){
+  body{
+    background:#f4fbfc !important;
+  }
+  .content,
+  .section-page,
+  .section-page *,
+  .quick-list,
+  .quick-list *,
+  .summary-card,
+  .summary-card *,
+  .table-wrap,
+  .table-wrap *,
+  .scanner-card,
+  .scanner-card *{
+    color:#1f2937;
+  }
+  .section-page h1,
+  .section-page h2,
+  .section-page h3,
+  .section-page h4,
+  .quick-list h1,
+  .quick-list h2,
+  .quick-list h3,
+  .summary-card .v,
+  .scanner-card h2{
+    color:#0f172a !important;
+  }
+  .section-page .muted,
+  .section-page .hint,
+  .section-page label,
+  .summary-card .k,
+  .footer-note,
+  .scanner-status,
+  .section-title p{
+    color:#475569 !important;
+  }
+  .topbar,
+  .topbar *,
+  .nav button,
+  .nav button *,
+  .nav button.active,
+  .nav button.active *,
+  .mobile-bottom-nav button,
+  .mobile-bottom-nav button *,
+  .mobile-fab,
+  .mobile-fab *,
+  .mobile-fab-action,
+  .mobile-fab-action *,
+  .badge,
+  .badge *{
+    color:#ffffff !important;
+  }
+  .mobile-chip{
+    color:#0f766e !important;
+    background:#ffffff !important;
+  }
+  .mobile-chip.active{
+    color:#ffffff !important;
+  }
+  .toolbar,
+  .section-title,
+  .quick-list,
+  .summary-card,
+  .card.panel.section-page{
+    max-width:100%;
+  }
+  .toolbar > *,
+  .actions > *,
+  .section-title > *,
+  .close-row > *,
+  .summary-actions > *{
+    min-width:0;
+  }
+  .actions button,
+  .toolbar button,
+  .toolbar select,
+  .toolbar input,
+  .toolbar textarea{
+    max-width:100%;
+  }
+  .table-wrap{
+    overflow:visible !important;
+    max-width:100%;
+  }
+  .table-wrap.responsive-cards{
+    overflow:visible !important;
+  }
+  .table-wrap.responsive-cards table,
+  .table-wrap.responsive-cards thead,
+  .table-wrap.responsive-cards tbody,
+  .table-wrap.responsive-cards tr,
+  .table-wrap.responsive-cards td,
+  .table-wrap.responsive-cards th{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+  }
+  .table-wrap.responsive-cards tbody{
+    display:grid !important;
+    gap:12px !important;
+  }
+  .table-wrap.responsive-cards tbody tr{
+    overflow:hidden;
+  }
+  .table-wrap.responsive-cards tbody td,
+  .table-wrap.responsive-cards tr > td{
+    display:flex !important;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:12px;
+    text-align:left;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+  .table-wrap.responsive-cards tbody td::before,
+  .table-wrap.responsive-cards tr > td::before{
+    content:attr(data-label);
+    display:block;
+    flex:0 0 42%;
+    max-width:42%;
+    font-size:11px;
+    line-height:1.5;
+    font-weight:700;
+    color:#0f766e !important;
+    margin:0;
+    text-align:right;
+  }
+  .table-wrap.responsive-cards tbody td > *,
+  .table-wrap.responsive-cards tr > td > *{
+    min-width:0;
+    max-width:58%;
+  }
+  .table-wrap.responsive-cards tbody td[data-label=""],
+  .table-wrap.responsive-cards tr > td[data-label=""]{
+    display:block !important;
+    text-align:right;
+  }
+  .table-wrap.responsive-cards tbody td[data-label=""]::before,
+  .table-wrap.responsive-cards tr > td[data-label=""]::before{
+    display:none !important;
+  }
+  .table-wrap.responsive-cards .actions{
+    display:grid !important;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    width:100%;
+  }
+  .table-wrap.responsive-cards .actions button{
+    width:100%;
+    min-width:0;
+  }
+  .table-wrap.responsive-cards td[data-label="إجراءات"],
+  .table-wrap.responsive-cards td[data-label="الاجراءات"],
+  .table-wrap.responsive-cards td[data-label="العمليات"]{
+    display:block !important;
+  }
+  .table-wrap.responsive-cards td[data-label="إجراءات"] > *,
+  .table-wrap.responsive-cards td[data-label="الاجراءات"] > *,
+  .table-wrap.responsive-cards td[data-label="العمليات"] > *{
+    max-width:100%;
+  }
+  .table-wrap.responsive-cards td[data-label="إجراءات"]::before,
+  .table-wrap.responsive-cards td[data-label="الاجراءات"]::before,
+  .table-wrap.responsive-cards td[data-label="العمليات"]::before{
+    display:block !important;
+    max-width:100%;
+    margin-bottom:8px;
+  }
+  .table-wrap.responsive-cards input,
+  .table-wrap.responsive-cards select,
+  .table-wrap.responsive-cards textarea,
+  .table-wrap.responsive-cards button{
+    max-width:100%;
+  }
+}
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js">
 
@@ -1031,24 +1211,33 @@
       wraps.forEach(wrap => {
         const table = wrap.querySelector('table');
         if(!table) return;
-        const heads = Array.from(table.querySelectorAll('thead th')).map(th => (th.textContent || '').trim());
-        const rows = table.querySelectorAll('tbody tr');
+
+        let heads = Array.from(table.querySelectorAll('thead th')).map(th => (th.textContent || '').trim());
+        if(!heads.length){
+          const firstHeaderRow = table.querySelector('tr');
+          if(firstHeaderRow){
+            heads = Array.from(firstHeaderRow.children)
+              .filter(cell => cell.tagName === 'TH')
+              .map(th => (th.textContent || '').trim());
+          }
+        }
+
+        const bodyRows = table.querySelectorAll('tbody tr');
+        const rows = bodyRows.length ? bodyRows : Array.from(table.querySelectorAll('tr')).slice(heads.length ? 1 : 0);
         rows.forEach(row => {
           Array.from(row.children).forEach((cell, idx) => {
             if(!(cell instanceof HTMLElement)) return;
-            if(!cell.hasAttribute('data-label')){
-              cell.setAttribute('data-label', heads[idx] || '');
-            } else if(!cell.getAttribute('data-label')){
-              cell.setAttribute('data-label', heads[idx] || '');
-            }
+            if(cell.tagName !== 'TD' && cell.tagName !== 'TH') return;
+            const fallbackLabel = heads[idx] || cell.getAttribute('data-label') || '';
+            cell.setAttribute('data-label', fallbackLabel);
           });
         });
 
         const colCount = heads.length || (table.rows[0] ? table.rows[0].cells.length : 0);
         const hasActions = heads.some(h => /إجراء|إجراءات|الاجراء|العمليات/i.test(h));
-        const forceCards = colCount >= 4 || hasActions || wrap.classList.contains('force-mobile-cards');
-        wrap.classList.toggle('responsive-cards', isMobileLayout() && forceCards);
-        wrap.classList.toggle('compact-mobile', isMobileLayout() && !forceCards);
+        const forceCards = isMobileLayout() && (colCount >= 2 || hasActions || wrap.classList.contains('force-mobile-cards'));
+        wrap.classList.toggle('responsive-cards', forceCards);
+        wrap.classList.toggle('compact-mobile', false);
       });
     }
 
