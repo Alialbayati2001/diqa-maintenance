@@ -3453,8 +3453,72 @@ const deviceStatusMap = {
       return getSelectedDateMaintenanceTotal() - getSelectedDateDeliveredDevicesPartsCost();
     }
 
+    let receiptTableFilters = {
+      search: '',
+      status: 'all',
+      sort: 'newest'
+    };
+
+    function getDeviceLinkedSupplyInvoicesText(deviceId){
+      const numbers = getDeviceSupplyInvoiceNumbers(deviceId);
+      return numbers.length ? numbers.join(' - ') : 'بدون فواتير';
+    }
+
     function getReceiptEditableDevices(){
-      return db.devices.slice().sort((a, b) => (Number(b.receiptSerial || 0) - Number(a.receiptSerial || 0)));
+      const items = Array.isArray(db.devices) ? db.devices.slice() : [];
+      const search = String(receiptTableFilters.search || '').trim().toLowerCase();
+      const status = String(receiptTableFilters.status || 'all');
+      const sort = String(receiptTableFilters.sort || 'newest');
+
+      const filtered = items.filter(d => {
+        if(status !== 'all' && String(d.status || '') !== status) return false;
+        if(!search) return true;
+
+        const invoiceText = getDeviceLinkedSupplyInvoicesText(d.id);
+        const haystack = [
+          d.receiptNumber,
+          d.customerName,
+          d.deviceType,
+          d.phone,
+          d.receivedBy,
+          d.status,
+          invoiceText
+        ]
+          .map(v => String(v || '').toLowerCase())
+          .join(' ');
+
+        return haystack.includes(search);
+      });
+
+      filtered.sort((a, b) => {
+        const da = new Date(a.receivedAt || a.createdAt || a.updatedAt || 0).getTime();
+        const dbb = new Date(b.receivedAt || b.createdAt || b.updatedAt || 0).getTime();
+        const sa = Number(a.receiptSerial || 0);
+        const sb = Number(b.receiptSerial || 0);
+
+        if(sort === 'oldest'){
+          return (da - dbb) || (sa - sb);
+        }
+        if(sort === 'receipt_asc'){
+          return (sa - sb) || (da - dbb);
+        }
+        if(sort === 'receipt_desc'){
+          return (sb - sa) || (dbb - da);
+        }
+        return (dbb - da) || (sb - sa);
+      });
+
+      return filtered;
+    }
+
+    function updateReceiptTableFilters(){
+      const searchEl = document.getElementById('receiptTableSearch');
+      const statusEl = document.getElementById('receiptTableStatus');
+      const sortEl = document.getElementById('receiptTableSort');
+      receiptTableFilters.search = searchEl ? searchEl.value : '';
+      receiptTableFilters.status = statusEl ? statusEl.value : 'all';
+      receiptTableFilters.sort = sortEl ? sortEl.value : 'newest';
+      renderShopReceive();
     }
 
     function startEditReceipt(deviceId){
@@ -4132,7 +4196,12 @@ const deviceStatusMap = {
 function renderShopReceive(){
       const mobileChips = buildMobileSectionChips();
       refreshDeviceBrandList();
-      const editableRows = getReceiptEditableDevices().map(d => `
+      const editableDevices = getReceiptEditableDevices();
+      const editableRows = editableDevices.map(d => {
+        const linkedInvoicesText = getDeviceLinkedSupplyInvoicesText(d.id);
+        const partSlipSummary = `${getDevicePartSlips(d.id).length} / مستخدم ${getUsedDevicePartSlips(d.id).length} / معلق ${getPendingDevicePartSlips(d.id).length}`;
+        const rowDate = formatDateTime(d.receivedAt || d.createdAt || d.updatedAt || d.completedAt);
+        return `
         <tr>
           <td>${escapeHtml(d.receiptNumber)}</td>
           <td>${escapeHtml(d.customerName)}</td>
@@ -4140,8 +4209,10 @@ function renderShopReceive(){
           <td>${escapeHtml(d.phone)}</td>
           <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
           <td>${badge(deviceStatusMap, d.status)}</td>
-          <td>${getDevicePartSlips(d.id).length} / مستخدم ${getUsedDevicePartSlips(d.id).length} / معلق ${getPendingDevicePartSlips(d.id).length}</td>
+          <td>${escapeHtml(linkedInvoicesText)}</td>
+          <td>${escapeHtml(partSlipSummary)}</td>
           <td>${escapeHtml(d.receivedBy || '—')}</td>
+          <td>${rowDate}</td>
           <td>
             <div class="actions">
               <button type="button" class="small info" onclick="startEditReceipt('${d.id}')">تعديل</button>
@@ -4149,7 +4220,8 @@ function renderShopReceive(){
             </div>
           </td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
       const isEditing = !!editingReceiptId;
       const editTarget = isEditing ? db.devices.find(x => x.id === editingReceiptId) : null;
       document.getElementById('shopReceiveSection').innerHTML = `
@@ -4180,9 +4252,23 @@ function renderShopReceive(){
         <div class="section-title" style="margin-bottom:10px">
           <div>
             <h2 style="font-size:18px">الوصولات القابلة للتعديل والحذف</h2>
-            <p>يمكن لموظف الاستلام تعديل الوصولات، بينما الحذف النهائي متاح للمدير فقط</p>
+            <p>بحث وفلترة وترتيب بدون حذف أي سطر من الأصل، مع إظهار فواتير طلبات التجهيز المرتبطة بكل جهاز بشكل ذكي</p>
           </div>
         </div>
+        <div class="toolbar" style="margin-bottom:10px">
+          <input id="receiptTableSearch" class="search" type="text" placeholder="ابحث برقم الوصل أو الزبون أو الهاتف أو الجهاز أو رقم الفاتورة" value="${escapeHtml(receiptTableFilters.search || '')}" oninput="updateReceiptTableFilters()" />
+          <select id="receiptTableStatus" onchange="updateReceiptTableFilters()">
+            <option value="all" ${receiptTableFilters.status === 'all' ? 'selected' : ''}>كل الحالات</option>
+            ${Object.entries(deviceStatusMap).map(([key, val]) => `<option value="${escapeHtml(key)}" ${receiptTableFilters.status === key ? 'selected' : ''}>${escapeHtml(val.label)}</option>`).join('')}
+          </select>
+          <select id="receiptTableSort" onchange="updateReceiptTableFilters()">
+            <option value="newest" ${receiptTableFilters.sort === 'newest' ? 'selected' : ''}>الأحدث تاريخاً</option>
+            <option value="oldest" ${receiptTableFilters.sort === 'oldest' ? 'selected' : ''}>الأقدم تاريخاً</option>
+            <option value="receipt_desc" ${receiptTableFilters.sort === 'receipt_desc' ? 'selected' : ''}>رقم الوصل من الأكبر</option>
+            <option value="receipt_asc" ${receiptTableFilters.sort === 'receipt_asc' ? 'selected' : ''}>رقم الوصل من الأصغر</option>
+          </select>
+        </div>
+        <div class="hint" style="margin-bottom:10px">عدد السطور الظاهرة: ${editableDevices.length} من أصل ${(db.devices || []).length}</div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -4193,12 +4279,14 @@ function renderShopReceive(){
                 <th>الهاتف</th>
                 <th>مبلغ الصيانة</th>
                 <th>الحالة</th>
+                <th>فواتير طلبات التجهيز</th>
                 <th>الوصولات</th>
                 <th>المستلم</th>
+                <th>التاريخ</th>
                 <th>إجراء</th>
               </tr>
             </thead>
-            <tbody>${editableRows || '<tr><td colspan="9" class="muted">لا توجد وصولات استلام حالياً</td></tr>'}</tbody>
+            <tbody>${editableRows || '<tr><td colspan="11" class="muted">لا توجد وصولات استلام حالياً</td></tr>'}</tbody>
           </table>
         </div>
       `;
