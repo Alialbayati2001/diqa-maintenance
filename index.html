@@ -2419,7 +2419,7 @@ const APP_CONFIG = {
           db.devices = await DevicesAPI.getAll();
           ensureBarcodeValues();
           saveDB(true);
-          if(currentUser) renderAll();
+          if(currentUser) scheduleSmartRender({ delay:80 });
         })
         .subscribe();
       return adminDevicesChannel;
@@ -2451,7 +2451,7 @@ const APP_CONFIG = {
           db.deviceCompanyRepairTransfers = sanitizeDeviceCompanyRepairTransfersMap(payload.deviceCompanyRepairTransfers || {});
           db.counters = { ...(db.counters || {}), ...(payload.counters || {}) };
           saveDB(true);
-          if(currentUser) renderAll();
+          if(currentUser) scheduleSmartRender({ delay:80 });
         })
         .subscribe();
       return appStateChannel;
@@ -2477,7 +2477,7 @@ const APP_CONFIG = {
         db.partSlips = partSlips;
         db.completions = completions;
         saveDB(true);
-        if(currentUser) renderAll();
+        if(currentUser) scheduleSmartRender({ delay:80 });
       };
       arraysRealtimeChannel = supabaseClient
         .channel('repair-array-tables-live')
@@ -3358,7 +3358,78 @@ const deviceStatusMap = {
       window.scrollTo({top:0, behavior:'smooth'});
     }
 
-    function renderAll(){
+    let __uiDraftState = null;
+    let __renderPausedBecauseEditing = false;
+    let __smartRenderTimer = null;
+
+    function isTypingElement(el){
+      return !!(
+        el && (
+          el.tagName === 'INPUT' ||
+          el.tagName === 'TEXTAREA' ||
+          el.tagName === 'SELECT' ||
+          el.isContentEditable
+        )
+      );
+    }
+
+    function isUserBusyEditing(){
+      const active = document.activeElement;
+      if(isTypingElement(active)) return true;
+      return !!document.querySelector('input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus');
+    }
+
+    function captureUiDraftState(){
+      const active = document.activeElement;
+      const state = {
+        values: {},
+        scrollY: window.scrollY || window.pageYOffset || 0,
+        activeId: active?.id || null,
+        selectionStart: null,
+        selectionEnd: null
+      };
+
+      document.querySelectorAll('input[id], textarea[id], select[id]').forEach(el => {
+        if(el.type === 'file') return;
+        state.values[el.id] = el.value;
+      });
+
+      if(active && typeof active.selectionStart === 'number'){
+        state.selectionStart = active.selectionStart;
+        state.selectionEnd = active.selectionEnd;
+      }
+
+      return state;
+    }
+
+    function restoreUiDraftState(state){
+      if(!state) return;
+
+      Object.entries(state.values || {}).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if(!el) return;
+        if(document.activeElement === el) return;
+        if(el.value !== value) el.value = value;
+      });
+
+      if(state.activeId){
+        const activeEl = document.getElementById(state.activeId);
+        if(activeEl){
+          try{ activeEl.focus({ preventScroll:true }); }catch(_){ try{ activeEl.focus(); }catch(__){} }
+          if(typeof state.selectionStart === 'number' && typeof activeEl.setSelectionRange === 'function'){
+            try{
+              activeEl.setSelectionRange(state.selectionStart, state.selectionEnd ?? state.selectionStart);
+            }catch(_){ }
+          }
+        }
+      }
+
+      if(typeof state.scrollY === 'number'){
+        try{ window.scrollTo({ top: state.scrollY, behavior:'auto' }); }catch(_){ window.scrollTo(0, state.scrollY); }
+      }
+    }
+
+    function performRenderAll(){
       resetSeenSmartAlerts();
       renderDashboard();
       renderShopReceive();
@@ -3375,6 +3446,51 @@ const deviceStatusMap = {
         showSmartAlertsAsPopup();
       }, 100);
     }
+
+    function renderAll(opts = {}){
+      const force = !!opts.force;
+      const preserveState = opts.preserveState !== false;
+
+      if(!force && isUserBusyEditing()){
+        __renderPausedBecauseEditing = true;
+        __uiDraftState = captureUiDraftState();
+        return false;
+      }
+
+      const draft = preserveState ? (__uiDraftState || captureUiDraftState()) : null;
+      performRenderAll();
+      if(preserveState) restoreUiDraftState(draft);
+      __uiDraftState = null;
+      __renderPausedBecauseEditing = false;
+      return true;
+    }
+
+    function scheduleSmartRender(opts = {}){
+      clearTimeout(__smartRenderTimer);
+      __smartRenderTimer = setTimeout(() => {
+        renderAll(opts);
+      }, Number(opts.delay ?? 80));
+    }
+
+    document.addEventListener('input', () => {
+      __uiDraftState = captureUiDraftState();
+    }, true);
+
+    document.addEventListener('change', () => {
+      __uiDraftState = captureUiDraftState();
+    }, true);
+
+    document.addEventListener('focusin', () => {
+      __uiDraftState = captureUiDraftState();
+    }, true);
+
+    document.addEventListener('focusout', () => {
+      if(!__renderPausedBecauseEditing) return;
+      clearTimeout(__smartRenderTimer);
+      __smartRenderTimer = setTimeout(() => {
+        if(!isUserBusyEditing()) renderAll({ force:true });
+      }, 120);
+    }, true);
 
     function formatMoneyIQD(value){
       return Number(value || 0).toLocaleString('ar-IQ');
@@ -4194,6 +4310,11 @@ const deviceStatusMap = {
     }
 
 function renderShopReceive(){
+      const sectionEl = document.getElementById('shopReceiveSection');
+      const activeEl = document.activeElement;
+      if(sectionEl && activeEl && sectionEl.contains(activeEl) && isTypingElement(activeEl) && sectionEl.dataset.renderedOnce === '1'){
+        return;
+      }
       const mobileChips = buildMobileSectionChips();
       refreshDeviceBrandList();
       const editableDevices = getReceiptEditableDevices();
@@ -4290,6 +4411,7 @@ function renderShopReceive(){
           </table>
         </div>
       `;
+      document.getElementById('shopReceiveSection').dataset.renderedOnce = '1';
       const today = new Date();
       const y = today.getFullYear();
       const m = String(today.getMonth()+1).padStart(2,'0');
@@ -6525,17 +6647,19 @@ window.addEventListener('load', function(){
         await hydrateFromSupabase();
         await refreshDevicesFromSupabase();
         await refreshArrayTablesFromSupabase();
-        renderAll();
+        renderAll({ force:true });
         window.addEventListener('focus', async () => {
+          if(isUserBusyEditing()) return;
           await refreshDevicesFromSupabase();
           await refreshArrayTablesFromSupabase();
-          if(currentUser) renderAll();
+          if(currentUser) scheduleSmartRender({ force:true, delay:80 });
         });
         document.addEventListener('visibilitychange', async () => {
           if(document.visibilityState !== 'visible') return;
+          if(isUserBusyEditing()) return;
           await refreshDevicesFromSupabase();
           await refreshArrayTablesFromSupabase();
-          if(currentUser) renderAll();
+          if(currentUser) scheduleSmartRender({ force:true, delay:80 });
         });
         window.addEventListener('beforeunload', () => {
           flushSaveDB().catch(() => {});
