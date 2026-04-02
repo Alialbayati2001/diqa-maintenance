@@ -3580,6 +3580,19 @@ const deviceStatusMap = {
       return numbers.length ? numbers.join(' - ') : 'بدون فواتير';
     }
 
+    function getDeviceLinkedSupplyRequests(deviceId){
+      return (db.supplyRequests || []).filter(req => req && req.deviceId === deviceId);
+    }
+
+    function startManagerDeviceEdit(deviceId){
+      if(!currentUser || currentUser.role !== 'manager'){
+        alert('هذا الخيار للمدير فقط');
+        return;
+      }
+      startEditReceipt(deviceId);
+      openSection('shopReceive');
+    }
+
     function getReceiptEditableDevices(){
       const items = Array.isArray(db.devices) ? db.devices.slice() : [];
       const search = String(receiptTableFilters.search || '').trim().toLowerCase();
@@ -3724,6 +3737,129 @@ const deviceStatusMap = {
 
     async function deleteReceipt(deviceId){
       await deleteDeviceCascade(deviceId, `هل تريد حذف وصل الاستلام رقم ${db.devices.find(x => x.id === deviceId)?.receiptNumber || '—'} نهائياً؟ سيتم حذف أي طلبات تجهيز أو وصولات أو عمليات إتمام مرتبطة به أيضاً.`);
+    }
+
+    async function updateLinkedSupplyRequest(requestId){
+      if(!currentUser || currentUser.role !== 'manager'){
+        alert('فقط المدير يمكنه تعديل الفاتورة');
+        return;
+      }
+
+      const req = (db.supplyRequests || []).find(x => x.id === requestId);
+      if(!req){
+        alert('تعذر العثور على الفاتورة');
+        return;
+      }
+
+      const invoiceNumber = (document.getElementById(`editSupplyInvoiceNumber_${requestId}`)?.value || '').trim();
+      const invoiceAmount = Number(document.getElementById(`editSupplyInvoiceAmount_${requestId}`)?.value || 0);
+      const partDescription = (document.getElementById(`editSupplyPart_${requestId}`)?.value || '').trim();
+      const notes = (document.getElementById(`editSupplyNotes_${requestId}`)?.value || '').trim();
+      const status = (document.getElementById(`editSupplyStatus_${requestId}`)?.value || 'pending').trim();
+
+      if(!invoiceNumber){
+        alert('رقم الفاتورة مطلوب');
+        return;
+      }
+      if(!partDescription){
+        alert('اكتب القطعة أو الطلب المطلوب');
+        return;
+      }
+
+      const duplicated = (db.supplyRequests || []).some(x => x.id !== requestId && String(x.salesInvoiceNumber || '').trim() === invoiceNumber);
+      if(duplicated){
+        alert('رقم الفاتورة مستخدم مسبقاً على وصلة أخرى');
+        return;
+      }
+
+      req.salesInvoiceNumber = invoiceNumber;
+      req.salesInvoiceAmount = invoiceAmount;
+      req.partDescription = partDescription;
+      req.notes = notes;
+      req.status = status;
+      req.updatedAt = nowISO();
+
+      const linkedDevice = (db.devices || []).find(d => d.id === req.deviceId);
+      if(linkedDevice){
+        req.receiptNumber = linkedDevice.receiptNumber || req.receiptNumber || '';
+        req.customerName = linkedDevice.customerName || req.customerName || '';
+      }
+
+      try{
+        if(APP_CONFIG.dataProvider === 'supabase'){
+          const row = {
+            id: req.id,
+            device_id: req.deviceId,
+            request_number: req.salesInvoiceNumber || null,
+            sales_invoice_amount: Number(req.salesInvoiceAmount || 0),
+            requested_part: req.partDescription || '',
+            notes: req.notes || '',
+            status: req.status || 'pending',
+            requested_by: req.sentBy || '',
+            company_handled_by: req.companyHandledBy || null,
+            receipt_number_snapshot: req.receiptNumber || '',
+            customer_name_snapshot: req.customerName || '',
+            quantity: 1,
+            requested_at: req.createdAt || nowISO(),
+            updated_at: req.updatedAt || nowISO()
+          };
+          const { error } = await supabaseClient.from(APP_CONFIG.supplyRequestsTable).upsert(row, { onConflict: 'id' });
+          if(error) throw error;
+          await refreshArrayTablesFromSupabase();
+        }
+        saveDB(true);
+        renderAll();
+        openSection('shopReceive');
+        showToast('تم تحديث الفاتورة المرتبطة بالجهاز بنجاح', 'info', 2400, 'نجاح');
+      }catch(err){
+        console.error('updateLinkedSupplyRequest failed:', err);
+        alert('تعذر تحديث الفاتورة');
+      }
+    }
+
+    async function deleteLinkedSupplyRequest(requestId){
+      if(!currentUser || currentUser.role !== 'manager'){
+        alert('فقط المدير يمكنه حذف الفاتورة');
+        return;
+      }
+
+      const req = (db.supplyRequests || []).find(x => x.id === requestId);
+      if(!req){
+        alert('الفاتورة غير موجودة');
+        return;
+      }
+
+      const ok = confirm(`هل تريد حذف الفاتورة رقم ${req.salesInvoiceNumber || '—'} فقط؟ لن يتم حذف الجهاز.`);
+      if(!ok) return;
+
+      try{
+        if(APP_CONFIG.dataProvider === 'supabase'){
+          const { error } = await supabaseClient.from(APP_CONFIG.supplyRequestsTable).delete().eq('id', requestId);
+          if(error) throw error;
+        }
+
+        db.supplyRequests = (db.supplyRequests || []).filter(x => x.id !== requestId);
+
+        const sameDeviceHasMore = (db.supplyRequests || []).some(x => x.deviceId === req.deviceId);
+        if(!sameDeviceHasMore){
+          const device = (db.devices || []).find(d => d.id === req.deviceId);
+          if(device && device.status === 'await_parts'){
+            await updateDeviceStatus(device.id, 'received');
+          }
+        }
+
+        if(APP_CONFIG.dataProvider === 'supabase'){
+          await refreshArrayTablesFromSupabase();
+          await refreshDevicesFromSupabase();
+        }
+        saveDB(true);
+        renderAll();
+        openSection('shopReceive');
+        showToast('تم حذف الفاتورة المرتبطة بالجهاز فقط', 'info', 2400, 'نجاح');
+      }catch(err){
+        console.error('deleteLinkedSupplyRequest failed:', err);
+        alert('تعذر حذف الفاتورة');
+      }
     }
 
     
@@ -4345,6 +4481,55 @@ function renderShopReceive(){
       }).join('');
       const isEditing = !!editingReceiptId;
       const editTarget = isEditing ? db.devices.find(x => x.id === editingReceiptId) : null;
+      const linkedRequests = editTarget ? getDeviceLinkedSupplyRequests(editTarget.id) : [];
+      const linkedRequestsEditorHtml = isEditing && currentUser && currentUser.role === 'manager' ? `
+        <div style="height:16px"></div>
+        <div class="card panel">
+          <div class="section-title">
+            <div>
+              <h2 style="font-size:18px">الوصولات / فواتير التجهيز المرتبطة بهذا الجهاز</h2>
+              <p>يمكن للمدير من هنا تعديل بيانات كل فاتورة مخرجة على هذا الجهاز أو حذفها فقط بدون حذف الجهاز</p>
+            </div>
+          </div>
+          ${linkedRequests.length ? `
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>رقم الفاتورة</th>
+                    <th>مبلغ الفاتورة</th>
+                    <th>القطعة / الطلب</th>
+                    <th>ملاحظات</th>
+                    <th>الحالة</th>
+                    <th>إجراء</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${linkedRequests.map(req => `
+                    <tr>
+                      <td><input id="editSupplyInvoiceNumber_${req.id}" value="${escapeHtml(req.salesInvoiceNumber || '')}" /></td>
+                      <td><input id="editSupplyInvoiceAmount_${req.id}" type="number" min="0" step="250" value="${escapeHtml(String(Number(req.salesInvoiceAmount || 0)))}" /></td>
+                      <td><input id="editSupplyPart_${req.id}" value="${escapeHtml(req.partDescription || '')}" /></td>
+                      <td><input id="editSupplyNotes_${req.id}" value="${escapeHtml(req.notes || '')}" /></td>
+                      <td>
+                        <select id="editSupplyStatus_${req.id}">
+                          ${Object.entries(supplyStatusMap).map(([key, val]) => `<option value="${escapeHtml(key)}" ${String(req.status || 'pending') === key ? 'selected' : ''}>${escapeHtml(val.label)}</option>`).join('')}
+                        </select>
+                      </td>
+                      <td>
+                        <div class="actions">
+                          <button type="button" class="small info" onclick="updateLinkedSupplyRequest('${req.id}')">حفظ الفاتورة</button>
+                          <button type="button" class="small danger" onclick="deleteLinkedSupplyRequest('${req.id}')">حذف الفاتورة</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : `<div class="muted">لا توجد فواتير تجهيز مرتبطة بهذا الجهاز حالياً</div>`}
+        </div>
+      ` : '';
       document.getElementById('shopReceiveSection').innerHTML = `
         <div class="section-title">
           <div>
@@ -4369,6 +4554,7 @@ function renderShopReceive(){
             ${isEditing ? '<button type="button" class="secondary" onclick="cancelEditReceipt()">إلغاء التعديل</button>' : ''}
           </div>
         </form>
+        ${linkedRequestsEditorHtml}
         <div style="height:16px"></div>
         <div class="section-title" style="margin-bottom:10px">
           <div>
@@ -4522,8 +4708,43 @@ function renderShopReceive(){
           current.receivedBy = receivedBy;
           current.updatedAt = nowISO();
           current.barcodeValue = current.barcodeValue || buildBarcodeValue(current.receiptNumber);
+
+          (db.supplyRequests || []).forEach(req => {
+            if(req && req.deviceId === current.id){
+              req.receiptNumber = current.receiptNumber || req.receiptNumber || '';
+              req.customerName = customerName;
+              req.updatedAt = nowISO();
+            }
+          });
+
           await DevicesAPI.upsert(current);
+          if(APP_CONFIG.dataProvider === 'supabase'){
+            const relatedRequests = (db.supplyRequests || []).filter(req => req && req.deviceId === current.id);
+            for(const req of relatedRequests){
+              const patchRow = {
+                id: req.id,
+                device_id: req.deviceId,
+                request_number: req.salesInvoiceNumber || null,
+                sales_invoice_amount: Number(req.salesInvoiceAmount || 0),
+                requested_part: req.partDescription || '',
+                notes: req.notes || '',
+                status: req.status || 'pending',
+                requested_by: req.sentBy || '',
+                company_handled_by: req.companyHandledBy || null,
+                receipt_number_snapshot: req.receiptNumber || current.receiptNumber || '',
+                customer_name_snapshot: req.customerName || customerName || '',
+                quantity: 1,
+                requested_at: req.createdAt || nowISO(),
+                updated_at: req.updatedAt || nowISO()
+              };
+              const { error: reqPatchError } = await supabaseClient.from(APP_CONFIG.supplyRequestsTable).upsert(patchRow, { onConflict: 'id' });
+              if(reqPatchError) throw reqPatchError;
+            }
+          }
           await refreshDevicesFromSupabase();
+          if(APP_CONFIG.dataProvider === 'supabase'){
+            await refreshArrayTablesFromSupabase();
+          }
           saveDB();
           editingReceiptId = null;
           showToast('تم تحديث وصل الاستلام بنجاح', 'info', 2600, 'نجاح');
@@ -4774,6 +4995,7 @@ function renderDevices(){
 
               <div class="summary-actions">
                 <button onclick="showDeviceSummaryByReceipt('${escapeJs(found.receiptNumber || '')}')">عرض التفاصيل</button>
+                ${currentUser && currentUser.role === 'manager' ? `<button class="info" onclick="startManagerDeviceEdit('${escapeJs(found.id)}')">تعديل الجهاز / الوصولات</button>` : ''}
                 <button class="secondary" onclick="printReceipt('${escapeJs(found.id)}')">طباعة الوصل</button>
               </div>
             </div>
@@ -4814,6 +5036,7 @@ function renderDevices(){
                 <button class="small gray" onclick="openSection('delivery')">التسليم من قسم التسليم</button>
               ` : ''}
               ${currentUser && currentUser.role === 'manager' ? `
+                <button class="small info" onclick="startManagerDeviceEdit('${d.id}')">تعديل الجهاز / الوصولات</button>
                 <button class="small danger" onclick="deleteDeviceCascade('${d.id}')">حذف الجهاز</button>
               ` : ''}
             </div>
