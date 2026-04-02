@@ -3672,7 +3672,12 @@ const deviceStatusMap = {
         if(el) el.value = value;
       });
       renderRepeatedFaultNotice();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const section = document.getElementById('shopReceiveSection');
+      if(section){
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }else{
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     }
 
     function cancelEditReceipt(){
@@ -4530,25 +4535,34 @@ function renderShopReceive(){
           ` : `<div class="muted">لا توجد فواتير تجهيز مرتبطة بهذا الجهاز حالياً</div>`}
         </div>
       ` : '';
+      const editingSummaryHtml = isEditing ? `
+        <div class="summary-grid" style="margin-bottom:14px">
+          <div class="summary-card"><div class="k">رقم الوصل الحالي</div><div class="v">${escapeHtml(editTarget?.receiptNumber || '—')}</div></div>
+          <div class="summary-card"><div class="k">الحالة الحالية</div><div class="v">${badge(deviceStatusMap, editTarget?.status || 'received')}</div></div>
+          <div class="summary-card"><div class="k">عدد فواتير التجهيز المرتبطة</div><div class="v">${linkedRequests.length}</div></div>
+          <div class="summary-card"><div class="k">يمكنك الآن</div><div class="v">تعديل أي حقل أو حذف فاتورة فقط بدون حذف الجهاز</div></div>
+        </div>
+      ` : '';
       document.getElementById('shopReceiveSection').innerHTML = `
         <div class="section-title">
           <div>
             <h2>${isEditing ? 'تعديل وصل الاستلام' : 'استلام جهاز من الزبون'}</h2>
-            <p>${isEditing ? `أنت الآن تعدّل الوصل رقم ${escapeHtml(editTarget?.receiptNumber || '')}` : 'هذه الصفحة لموظف المحل والمدير لاستلام الجهاز وإرساله إلى الصيانة، بدون كتابة رقم فاتورة في هذه المرحلة'}</p>
+            <p>${isEditing ? `ظهرت لك البيانات القديمة للوصول رقم ${escapeHtml(editTarget?.receiptNumber || '')} مع الوصولات المخرجة عليه، ويمكنك تعديل أي شيء ثم الضغط على حفظ التعديلات.` : 'هذه الصفحة لموظف المحل والمدير لاستلام الجهاز وإرساله إلى الصيانة، بدون كتابة رقم فاتورة في هذه المرحلة'}</p>
           </div>
         </div>
+        ${editingSummaryHtml}
         <form class="grid grid-2" onsubmit="createDevice(event)">
-          <div><label>اسم الزبون</label><input id="customerName" required /></div>
-          <div><label>رقم الهاتف</label><input id="phone" required /></div>
-          <div><label>نوع الجهاز</label><input id="deviceType" list="deviceBrandList" placeholder="مثال: iphone 11 أو redmi note 13 أو mi a3 أو ipad 10" oninput="handleDeviceTypeInput(this)" required /><datalist id="deviceBrandList" data-owner-id="deviceType"></datalist><div class="hint">اقتراحات ذكية موسعة: iPhone و Xiaomi/Redmi/Mi وكذلك الأجهزة اللوحية مثل iPad 10 و Samsung Tab A8 X200 و Blackview Tab 16 Pro و Redmi Pad SE و Infinix X Pad و Honor Pad X8</div></div>
-          <div><label>لون الجهاز</label><input id="deviceColor" placeholder="مثال: أسود / أبيض / أزرق" required /></div>
-          <div><label>اسم الموظف المستلم</label><input id="receivedBy" placeholder="يكتب الموظف اسمه هنا" autocomplete="off" /></div>
-          <div style="grid-column:1/-1"><label>العطل</label><textarea id="faultDescription" required></textarea></div>
+          <div><label>اسم الزبون</label><input id="customerName" value="${escapeHtml(editTarget?.customerName || '')}" required /></div>
+          <div><label>رقم الهاتف</label><input id="phone" value="${escapeHtml(editTarget?.phone || '')}" required /></div>
+          <div><label>نوع الجهاز</label><input id="deviceType" value="${escapeHtml(editTarget?.deviceType || '')}" list="deviceBrandList" placeholder="مثال: iphone 11 أو redmi note 13 أو mi a3 أو ipad 10" oninput="handleDeviceTypeInput(this)" required /><datalist id="deviceBrandList" data-owner-id="deviceType"></datalist><div class="hint">اقتراحات ذكية موسعة: iPhone و Xiaomi/Redmi/Mi وكذلك الأجهزة اللوحية مثل iPad 10 و Samsung Tab A8 X200 و Blackview Tab 16 Pro و Redmi Pad SE و Infinix X Pad و Honor Pad X8</div></div>
+          <div><label>لون الجهاز</label><input id="deviceColor" value="${escapeHtml(editTarget?.deviceColor || '')}" placeholder="مثال: أسود / أبيض / أزرق" required /></div>
+          <div><label>اسم الموظف المستلم</label><input id="receivedBy" value="${escapeHtml(editTarget?.receivedBy || '')}" placeholder="يكتب الموظف اسمه هنا" autocomplete="off" /></div>
+          <div style="grid-column:1/-1"><label>العطل</label><textarea id="faultDescription" required>${escapeHtml(editTarget?.faultDescription || '')}</textarea></div>
           <div id="repeatedFaultAlertBox"></div>
-          <div><label>الملحقات المستلمة</label><input id="accessories" required /></div>
-          <div><label>مبلغ الصيانة</label><input id="repairAmount" type="number" min="0" step="0.01" placeholder="0 = يحدد بعد الفحص" required /></div>
-          <div><label>تاريخ الاستلام</label><input id="receiveDate" type="date" required /></div>
-          <div><label>الوقت</label><input id="receiveTime" type="time" required /></div>
+          <div><label>الملحقات المستلمة</label><input id="accessories" value="${escapeHtml(editTarget?.accessories || '')}" required /></div>
+          <div><label>مبلغ الصيانة</label><input id="repairAmount" type="number" min="0" step="0.01" value="${escapeHtml(String(Number(editTarget?.repairAmount || 0)))}" placeholder="0 = يحدد بعد الفحص" required /></div>
+          <div><label>تاريخ الاستلام</label><input id="receiveDate" type="date" value="${escapeHtml(editTarget?.receiveDate || '')}" required /></div>
+          <div><label>الوقت</label><input id="receiveTime" type="time" value="${escapeHtml(editTarget?.receiveTime || '')}" required /></div>
           <div style="grid-column:1/-1" class="actions">
             <button type="submit">${isEditing ? 'حفظ التعديلات' : 'حفظ استلام الجهاز وإرساله للصيانة'}</button>
             ${isEditing ? '<button type="button" class="secondary" onclick="cancelEditReceipt()">إلغاء التعديل</button>' : ''}
