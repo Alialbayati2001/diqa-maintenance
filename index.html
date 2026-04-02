@@ -3736,7 +3736,9 @@ const deviceStatusMap = {
 
       const showUsedSlipNumbersColumn =
         title === 'الأجهزة المسلمة اليوم' ||
-        title === 'الأجهزة المسلمة في التاريخ المحدد';
+        title === 'الأجهزة المسلمة في التاريخ المحدد' ||
+        title === 'الأجهزة المكتملة اليوم' ||
+        title === 'الأجهزة المكتملة في التاريخ المحدد';
 
       const rows = items.map(d => {
         const usedSlipNumbers = showUsedSlipNumbersColumn ? getDeviceSupplyInvoiceNumbers(d.id) : [];
