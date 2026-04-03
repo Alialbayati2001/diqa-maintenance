@@ -1406,6 +1406,7 @@
     };
 
     let db = loadDB();
+    normalizeDevicesInDB(false);
     ensureBarcodeValues();
     let currentUser = null;
     let currentSection = 'dashboard';
@@ -1824,6 +1825,38 @@ const APP_CONFIG = {
       return `${window.formatMoneyIQD(value)} د.ع`;
     };
 
+    function normalizeDeviceRecord(d = {}, index = 0){
+      const createdAt = d.createdAt || d.receivedAt || d.updatedAt || nowISO();
+      const receiveDateFromCreated = createdAt ? new Date(createdAt).toISOString().slice(0,10) : '';
+      const receiveTimeFromCreated = createdAt ? new Date(createdAt).toTimeString().slice(0,5) : '';
+      return {
+        completedAt: null,
+        notRepairedAt: null,
+        notRepairReason: '',
+        receiptSerial: typeof d.receiptSerial === 'number' ? d.receiptSerial : inferReceiptSerial(d.receiptNumber, index),
+        ...d,
+        customerName: d.customerName || d.customer || '',
+        phone: d.phone || d.customerPhone || '',
+        deviceType: d.deviceType || d.device || '',
+        deviceColor: d.deviceColor || d.color || '',
+        receivedBy: d.receivedBy || d.receiverName || '',
+        faultDescription: d.faultDescription || d.fault || d.issue || '',
+        accessories: d.accessories || d.receivedAccessories || '',
+        repairAmount: Number(d.repairAmount ?? d.amount ?? 0),
+        receiveDate: d.receiveDate || receiveDateFromCreated,
+        receiveTime: d.receiveTime || receiveTimeFromCreated,
+        barcodeValue: d.barcodeValue || (d.receiptNumber ? buildBarcodeValue(d.receiptNumber) : ''),
+        createdAt,
+        updatedAt: d.updatedAt || createdAt
+      };
+    }
+
+    function normalizeDevicesInDB(shouldPersist = false){
+      if(!db || !Array.isArray(db.devices)) return;
+      db.devices = db.devices.map((d, index) => normalizeDeviceRecord(d, index));
+      if(shouldPersist) saveDB(true);
+    }
+
     function loadDB(){
       const raw = localStorage.getItem(STORAGE_KEY);
       if(!raw){
@@ -1833,13 +1866,7 @@ const APP_CONFIG = {
       try {
         const parsed = JSON.parse(raw);
         parsed.users = structuredClone(DEFAULT_DB.users);
-        parsed.devices = (parsed.devices || []).map((d, index) => ({
-          completedAt: null,
-          notRepairedAt: null,
-          notRepairReason: '',
-          receiptSerial: typeof d.receiptSerial === 'number' ? d.receiptSerial : inferReceiptSerial(d.receiptNumber, index),
-          ...d
-        }));
+        parsed.devices = (parsed.devices || []).map((d, index) => normalizeDeviceRecord(d, index));
         const maxSerial = parsed.devices.reduce((max, d) => Math.max(max, Number(d.receiptSerial) || 0), 0);
         parsed.deviceReturnRequests = sanitizeDeviceReturnRequests(parsed.deviceReturnRequests || []);
         parsed.counters = parsed.counters || {};
@@ -3129,7 +3156,7 @@ const deviceStatusMap = {
       if(APP_CONFIG.dataProvider !== 'supabase') return;
       try {
         const devices = await DevicesAPI.getAll();
-        db.devices = Array.isArray(devices) ? devices : [];
+        db.devices = Array.isArray(devices) ? devices.map((d, index) => normalizeDeviceRecord(d, index)) : [];
         ensureBarcodeValues();
         saveDB(true);
       } catch (err) {
@@ -3651,25 +3678,28 @@ const deviceStatusMap = {
     }
 
     function startEditReceipt(deviceId){
-      const d = db.devices.find(x => x.id === deviceId);
-      if(!d) return;
+      const source = db.devices.find(x => x.id === deviceId);
+      if(!source) return;
+      const d = normalizeDeviceRecord(source);
+      const sourceIndex = db.devices.findIndex(x => x.id === deviceId);
+      if(sourceIndex >= 0) db.devices[sourceIndex] = d;
       editingReceiptId = deviceId;
       renderShopReceive();
       const map = {
-        customerName: d.customerName || '',
-        phone: d.phone || '',
-        deviceType: d.deviceType || '',
-        deviceColor: d.deviceColor || '',
-        receivedBy: d.receivedBy || '',
-        faultDescription: d.faultDescription || '',
-        accessories: d.accessories || '',
-        repairAmount: Number(d.repairAmount || 0),
+        customerName: d.customerName || d.customer || '',
+        phone: d.phone || d.customerPhone || '',
+        deviceType: d.deviceType || d.device || '',
+        deviceColor: d.deviceColor || d.color || '',
+        receivedBy: d.receivedBy || d.receiverName || '',
+        faultDescription: d.faultDescription || d.fault || d.issue || '',
+        accessories: d.accessories || d.receivedAccessories || '',
+        repairAmount: Number(d.repairAmount ?? d.amount ?? 0),
         receiveDate: d.receiveDate || '',
         receiveTime: d.receiveTime || ''
       };
       Object.entries(map).forEach(([id, value]) => {
         const el = document.getElementById(id);
-        if(el) el.value = value;
+        if(el) el.value = value ?? '';
       });
       renderRepeatedFaultNotice();
       const section = document.getElementById('shopReceiveSection');
@@ -6887,6 +6917,7 @@ window.addEventListener('load', function(){
         await hydrateFromSupabase();
         await refreshDevicesFromSupabase();
         await refreshArrayTablesFromSupabase();
+        normalizeDevicesInDB(true);
         renderAll({ force:true });
         window.addEventListener('focus', async () => {
           if(isUserBusyEditing()) return;
