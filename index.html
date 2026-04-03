@@ -102,6 +102,7 @@
     button.danger{background:var(--danger)}
     button.gray{background:var(--gray)}
     button.small{padding:7px 10px;font-size:12px;border-radius:10px}
+    button:disabled{opacity:.55;cursor:not-allowed;transform:none !important;box-shadow:none !important}
     .layout{
       display:grid;
       grid-template-columns:260px 1fr;
@@ -1207,7 +1208,8 @@
     }
 
     function prepareResponsiveTables(root=document){
-      const wraps = root.querySelectorAll('.table-wrap');
+      const scope = root && root.querySelectorAll ? root : document;
+      const wraps = scope.querySelectorAll('.table-wrap');
       wraps.forEach(wrap => {
         const table = wrap.querySelector('table');
         if(!table) return;
@@ -1222,30 +1224,40 @@
           }
         }
 
-        const bodyRows = table.querySelectorAll('tbody tr');
+        const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
         const rows = bodyRows.length ? bodyRows : Array.from(table.querySelectorAll('tr')).slice(heads.length ? 1 : 0);
         rows.forEach(row => {
           Array.from(row.children).forEach((cell, idx) => {
             if(!(cell instanceof HTMLElement)) return;
             if(cell.tagName !== 'TD' && cell.tagName !== 'TH') return;
             const fallbackLabel = heads[idx] || cell.getAttribute('data-label') || '';
-            cell.setAttribute('data-label', fallbackLabel);
+            if(cell.getAttribute('data-label') !== fallbackLabel){
+              cell.setAttribute('data-label', fallbackLabel);
+            }
           });
         });
 
         const colCount = heads.length || (table.rows[0] ? table.rows[0].cells.length : 0);
         const hasActions = heads.some(h => /إجراء|إجراءات|الاجراء|العمليات/i.test(h));
-        const forceCards = isMobileLayout() && (colCount >= 2 || hasActions || wrap.classList.contains('force-mobile-cards'));
+        const rowCount = rows.length;
+        const allowCards = rowCount > 0 && rowCount <= 20;
+        const forceCards = isMobileLayout() && allowCards && (colCount >= 2 || hasActions || wrap.classList.contains('force-mobile-cards'));
         wrap.classList.toggle('responsive-cards', forceCards);
         wrap.classList.toggle('compact-mobile', false);
       });
     }
 
+    function getActiveSectionRoot(){
+      const activeSection = document.querySelector('.section-page:not(.hidden)');
+      return activeSection || document;
+    }
+
     function enhanceMobileUI(root=document){
-      prepareResponsiveTables(root);
+      const targetRoot = root && root.querySelectorAll ? root : getActiveSectionRoot();
+      prepareResponsiveTables(targetRoot);
       if(!isMobileLayout()){
         closeMobileNav();
-      closeMobileFab();
+        closeMobileFab();
       }
       const navButtons = document.querySelectorAll('#navButtons button');
       navButtons.forEach(btn => {
@@ -1258,13 +1270,18 @@
       });
     }
 
-    const __mobileObserver = new MutationObserver(() => {
+    const __mobileObserver = new MutationObserver((mutations) => {
+      const shouldEnhance = mutations.some(m => {
+        const target = m.target;
+        return target instanceof HTMLElement && !!target.closest('.section-page:not(.hidden), .table-wrap');
+      });
+      if(!shouldEnhance) return;
       clearTimeout(window.__mobileEnhanceTimer);
-      window.__mobileEnhanceTimer = setTimeout(() => enhanceMobileUI(document), 60);
+      window.__mobileEnhanceTimer = setTimeout(() => enhanceMobileUI(getActiveSectionRoot()), 220);
     });
 
-    window.addEventListener('resize', () => enhanceMobileUI(document));
-    window.addEventListener('orientationchange', () => enhanceMobileUI(document));
+    window.addEventListener('resize', () => enhanceMobileUI(getActiveSectionRoot()));
+    window.addEventListener('orientationchange', () => enhanceMobileUI(getActiveSectionRoot()));
     document.addEventListener('click', (e) => {
       if(!isMobileLayout()) return;
       const sidebar = document.querySelector('.sidebar');
@@ -1277,7 +1294,7 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
-      enhanceMobileUI(document);
+      enhanceMobileUI(getActiveSectionRoot());
       __mobileObserver.observe(document.body, {childList:true, subtree:true});
     });
 
@@ -1810,6 +1827,7 @@ const APP_CONFIG = {
     let savingPromise = null;
     let pendingSave = false;
     let deviceFilters = { search:'', type:'all' };
+    let devicePagination = { page:1, perPage:25 };
     let scannerStream = null;
     let scannerInterval = null;
     let scannerDetector = null;
@@ -2493,18 +2511,22 @@ const APP_CONFIG = {
 
     function subscribeArrayTablesRealtime(){
       if(arraysRealtimeChannel || APP_CONFIG.dataProvider !== 'supabase') return arraysRealtimeChannel;
+      let refreshAllTimer = null;
       const refreshAll = async () => {
         if(savingPromise) return;
-        const [supplyRequests, partSlips, completions] = await Promise.all([
-          SupplyRequestsAPI.getAll(),
-          PartSlipsAPI.getAll(),
-          CompletionsAPI.getAll()
-        ]);
-        db.supplyRequests = supplyRequests;
-        db.partSlips = partSlips;
-        db.completions = completions;
-        saveDB(true);
-        if(currentUser) scheduleSmartRender({ delay:80 });
+        clearTimeout(refreshAllTimer);
+        refreshAllTimer = setTimeout(async () => {
+          const [supplyRequests, partSlips, completions] = await Promise.all([
+            SupplyRequestsAPI.getAll(),
+            PartSlipsAPI.getAll(),
+            CompletionsAPI.getAll()
+          ]);
+          db.supplyRequests = supplyRequests;
+          db.partSlips = partSlips;
+          db.completions = completions;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+          if(currentUser) scheduleSmartRender({ delay:180 });
+        }, 450);
       };
       arraysRealtimeChannel = supabaseClient
         .channel('repair-array-tables-live')
@@ -2553,7 +2575,7 @@ const APP_CONFIG = {
       if(saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
         flushSaveDB().catch(err => console.error('flushSaveDB error:', err));
-      }, 350);
+      }, 1200);
     }
 
     async function flushSaveDB(){
@@ -4053,12 +4075,10 @@ const deviceStatusMap = {
       if(device){
         deviceFilters.search = String(device.receiptNumber || '').trim();
         deviceFilters.type = 'all';
+        resetDevicePagination();
       }
       openSection('devices');
-      setTimeout(() => {
-        const row = document.getElementById(`device_row_${deviceId}`);
-        if(row) row.scrollIntoView({ behavior:'smooth', block:'center' });
-      }, 120);
+      setTimeout(() => openDeviceInPagedList(deviceId), 120);
     }
 
     function getDeviceSupplyInvoiceNumbers(deviceId){
@@ -4971,6 +4991,8 @@ function renderDevices(){
       if(!section) return;
 
       const filteredDevices = getFilteredDevices();
+      const paginationMeta = getDevicePageItems(filteredDevices);
+      const pagedDevices = paginationMeta.items;
       const overdueCount = db.devices.filter(d => {
         const ageDays = d.createdAt ? ((new Date() - new Date(d.createdAt)) / (1000 * 60 * 60 * 24)) : 0;
         return ageDays >= 3 && !['complete','delivered','not_repaired'].includes(d.status);
@@ -5048,46 +5070,9 @@ function renderDevices(){
         }
       }
 
-      const rows = filteredDevices.map(d => {
-        const ageDays = d.createdAt ? ((new Date() - new Date(d.createdAt)) / (1000 * 60 * 60 * 24)) : 0;
-        const isOverdue = ageDays >= 3 && !['complete','delivered','not_repaired'].includes(d.status);
-        return `
-        <tr id="device_row_${d.id}" class="${highlightedDeviceId === d.id ? 'scan-hit' : ''}" style="${isOverdue ? 'background: rgba(239,68,68,.12);' : ''}">
-          <td>${escapeHtml(d.receiptNumber)}</td>
-          <td>${escapeHtml(d.customerName)}</td>
-          <td>${escapeHtml(d.deviceType)}</td>
-          <td>${escapeHtml(d.deviceColor || '—')}</td>
-          <td>${escapeHtml(d.phone)}</td>
-          <td>${badge(deviceStatusMap, d.status)}</td>
-          <td>${escapeHtml(getDeviceMissingPartEntry(d.id)?.text || '—')}</td>
-          <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
-          <td>${escapeHtml(d.receivedBy || '—')}</td>
-          <td>${escapeHtml(d.receiveDate || '—')}<br><span class="muted">${escapeHtml(d.receiveTime || '')}</span></td>
-          <td><svg id="barcode_${d.id}"></svg></td>
-          <td>${d.status === 'not_repaired' ? `<span class="muted">${escapeHtml(d.notRepairReason || '—')}</span>` : d.status === 'sent_to_company_repair' ? `<span class="muted">${escapeHtml(getDeviceCompanyRepairTransferEntry(d.id)?.note || '—')}</span>` : '—'}</td>
-          <td>${escapeHtml(getLatestTechnicianNoteForDevice(d.id) || '—')}</td>
-          <td>
-            <div class="actions">
-              <button class="small secondary" onclick="showDeviceSummaryByReceipt('${escapeJs(d.receiptNumber || '')}')">حالة الجهاز</button>
-              ${(currentUser && ['technician','manager'].includes(currentUser.role)) ? `
-                <button class="small secondary" onclick="editDeviceMissingParts('${d.id}')">نواقص قطع الغيار</button>
-                <button class="small info" onclick="setDeviceStatus('${d.id}','await_approval')">انتظار موافقة</button>
-                <button class="small warning" onclick="setDeviceStatus('${d.id}','await_parts')">انتظار قطع</button>
-                ${d.status !== 'sent_to_company_repair' ? `<button class="small gray" onclick="sendDeviceToCompanyRepair('${d.id}')">إرسال للشركة للتصليح</button>` : ''}
-                <button class="small danger" onclick="markDeviceNotRepaired('${d.id}')">لم يتم التصليح</button>
-              ` : ''}
-              <button class="small secondary" onclick="printReceipt('${d.id}')">طباعة الوصل</button>
-              ${(currentUser && ['employee','manager'].includes(currentUser.role) && d.status === 'complete') ? `
-                <button class="small gray" onclick="openSection('delivery')">التسليم من قسم التسليم</button>
-              ` : ''}
-              ${currentUser && currentUser.role === 'manager' ? `
-                <button class="small info" onclick="startManagerDeviceEdit('${d.id}')">تعديل الجهاز / الوصولات</button>
-                <button class="small danger" onclick="deleteDeviceCascade('${d.id}')">حذف الجهاز</button>
-              ` : ''}
-            </div>
-          </td>
-        </tr>
-      `}).join('');
+      const rowsPlaceholder = pagedDevices.length
+        ? `<tr><td colspan="14" class="muted">جاري تحميل الصفوف...</td></tr>`
+        : `<tr><td colspan="14" class="muted">لا توجد بيانات مطابقة للفلتر الحالي</td></tr>`;
 
       section.innerHTML = `${mobileChips}
         <div class="section-title">
@@ -5100,6 +5085,7 @@ function renderDevices(){
         <div class="toolbar" style="margin-bottom:12px">
           <input id="deviceSearchInput" class="search" type="text" placeholder="ابحث باسم الزبون أو رقم الهاتف أو رقم الوصل أو نوع الجهاز" value="${escapeHtml(deviceFilters.search || '')}" oninput="setDeviceSearch(this.value)" onkeydown="if(event.key==='Enter'){ event.preventDefault(); setDeviceSearch(this.value); }" />
           <button type="button" onclick="setDeviceSearch(document.getElementById('deviceSearchInput')?.value || '')">بحث</button>
+          <button type="button" class="secondary" onclick="openSummaryFromSearch()">فتح الجهاز</button>
           <select id="deviceStatusFilter" onchange="setDeviceFilter(this.value)" style="max-width:240px">
             <option value="all" ${deviceFilters.type === 'all' ? 'selected' : ''}>كل الحالات</option>
             <option value="received" ${deviceFilters.type === 'received' ? 'selected' : ''}>مستلم (${receivedCount})</option>
@@ -5140,25 +5126,109 @@ function renderDevices(){
                 <th>إجراءات</th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="14" class="muted">لا توجد بيانات مطابقة للفلتر الحالي</td></tr>`}</tbody>
+            <tbody id="deviceRowsTbody">${rowsPlaceholder}</tbody>
           </table>
         </div>
       `;
-      renderDeviceBarcodes(filteredDevices);
+      renderDevicesRowsProgressive(pagedDevices);
+      renderDeviceBarcodes(pagedDevices);
+    }
+
+    let __deviceRowsRenderToken = 0;
+
+    function buildDeviceRowHtml(d){
+      const ageDays = d.createdAt ? ((new Date() - new Date(d.createdAt)) / (1000 * 60 * 60 * 24)) : 0;
+      const isOverdue = ageDays >= 3 && !['complete','delivered','not_repaired'].includes(d.status);
+      return `
+        <tr id="device_row_${d.id}" class="${highlightedDeviceId === d.id ? 'scan-hit' : ''}" style="${isOverdue ? 'background: rgba(239,68,68,.12);' : ''}">
+          <td>${escapeHtml(d.receiptNumber)}</td>
+          <td>${escapeHtml(d.customerName)}</td>
+          <td>${escapeHtml(d.deviceType)}</td>
+          <td>${escapeHtml(d.deviceColor || '—')}</td>
+          <td>${escapeHtml(d.phone)}</td>
+          <td>${badge(deviceStatusMap, d.status)}</td>
+          <td>${escapeHtml(getDeviceMissingPartEntry(d.id)?.text || '—')}</td>
+          <td>${formatRepairAmountLabel(d.repairAmount, false)}</td>
+          <td>${escapeHtml(d.receivedBy || '—')}</td>
+          <td>${escapeHtml(d.receiveDate || '—')}<br><span class="muted">${escapeHtml(d.receiveTime || '')}</span></td>
+          <td><svg id="barcode_${d.id}"></svg></td>
+          <td>${d.status === 'not_repaired' ? `<span class="muted">${escapeHtml(d.notRepairReason || '—')}</span>` : d.status === 'sent_to_company_repair' ? `<span class="muted">${escapeHtml(getDeviceCompanyRepairTransferEntry(d.id)?.note || '—')}</span>` : '—'}</td>
+          <td>${escapeHtml(getLatestTechnicianNoteForDevice(d.id) || '—')}</td>
+          <td>
+            <div class="actions">
+              <button class="small secondary" onclick="showDeviceSummaryByReceipt('${escapeJs(d.receiptNumber || '')}')">حالة الجهاز</button>
+              ${(currentUser && ['technician','manager'].includes(currentUser.role)) ? `
+                <button class="small secondary" onclick="editDeviceMissingParts('${d.id}')">نواقص قطع الغيار</button>
+                <button class="small info" onclick="setDeviceStatus('${d.id}','await_approval')">انتظار موافقة</button>
+                <button class="small warning" onclick="setDeviceStatus('${d.id}','await_parts')">انتظار قطع</button>
+                ${d.status !== 'sent_to_company_repair' ? `<button class="small gray" onclick="sendDeviceToCompanyRepair('${d.id}')">إرسال للشركة للتصليح</button>` : ''}
+                <button class="small danger" onclick="markDeviceNotRepaired('${d.id}')">لم يتم التصليح</button>
+              ` : ''}
+              <button class="small secondary" onclick="printReceipt('${d.id}')">طباعة الوصل</button>
+              ${(currentUser && ['employee','manager'].includes(currentUser.role) && d.status === 'complete') ? `
+                <button class="small gray" onclick="openSection('delivery')">التسليم من قسم التسليم</button>
+              ` : ''}
+              ${currentUser && currentUser.role === 'manager' ? `
+                <button class="small info" onclick="startManagerDeviceEdit('${d.id}')">تعديل الجهاز / الوصولات</button>
+                <button class="small danger" onclick="deleteDeviceCascade('${d.id}')">حذف الجهاز</button>
+              ` : ''}
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
+    function renderDevicesRowsProgressive(devices){
+      const tbody = document.getElementById('deviceRowsTbody');
+      if(!tbody) return;
+      const list = Array.isArray(devices) ? devices.slice() : [];
+      const token = ++__deviceRowsRenderToken;
+      if(!list.length){
+        tbody.innerHTML = `<tr><td colspan="14" class="muted">لا توجد بيانات مطابقة للفلتر الحالي</td></tr>`;
+        return;
+      }
+      const chunkSize = isMobileLayout() ? 6 : 10;
+      let index = 0;
+      tbody.innerHTML = '';
+      const appendChunk = () => {
+        if(token !== __deviceRowsRenderToken) return;
+        const chunk = list.slice(index, index + chunkSize).map(buildDeviceRowHtml).join('');
+        if(chunk){
+          tbody.insertAdjacentHTML('beforeend', chunk);
+        }
+        index += chunkSize;
+        if(index < list.length){
+          requestAnimationFrame(appendChunk);
+        }else{
+          prepareResponsiveTables(document.getElementById('devicesSection') || document);
+        }
+      };
+      requestAnimationFrame(appendChunk);
     }
 
     function renderDeviceBarcodes(devices){
       if(typeof JsBarcode !== 'function') return;
+      const list = Array.isArray(devices) ? devices.slice() : [];
       requestAnimationFrame(() => {
-        devices.forEach(d => {
-          const el = document.getElementById(`barcode_${d.id}`);
-          if(!el) return;
-          try{
-            JsBarcode(el, String(d.receiptNumber || ''), {
-              format:'CODE128', width:1.6, height:36, displayValue:false, margin:0
-            });
-          }catch(e){}
-        });
+        let index = 0;
+        const chunkSize = 8;
+        const drawChunk = () => {
+          const chunk = list.slice(index, index + chunkSize);
+          chunk.forEach(d => {
+            const el = document.getElementById(`barcode_${d.id}`);
+            if(!el) return;
+            try{
+              JsBarcode(el, String(d.receiptNumber || ''), {
+                format:'CODE128', width:1.6, height:36, displayValue:false, margin:0
+              });
+            }catch(e){}
+          });
+          index += chunkSize;
+          if(index < list.length){
+            requestAnimationFrame(drawChunk);
+          }
+        };
+        drawChunk();
       });
     }
 
@@ -5394,10 +5464,7 @@ window.addEventListener('load', function(){
       if(input) input.focus();
       const status = document.getElementById('scannerStatus');
       if(found){
-        setTimeout(() => {
-          const row = document.getElementById(`device_row_${found.id}`);
-          if(row) row.scrollIntoView({ behavior:'smooth', block:'center' });
-        }, 80);
+        openDeviceInPagedList(found.id);
         setTimeout(() => showDeviceSummaryByReceipt(found ? found.receiptNumber : normalized), 120);
       }else{
         showDeviceSummaryByReceipt(found ? found.receiptNumber : normalized);
@@ -5413,14 +5480,77 @@ window.addEventListener('load', function(){
       alert(`رقم الوصل: ${summary.receiptNumber}\nالزبون: ${summary.customerName}\nالحالة: ${summary.statusLabel}\nنوع الجهاز: ${summary.deviceType}\nالمبلغ: ${formatRepairAmountLabel(summary.amount)}`);
     }
 
+    function resetDevicePagination(){
+      devicePagination.page = 1;
+    }
+
+    function getDevicePageItems(items){
+      const perPage = Math.max(1, Number(devicePagination.perPage || 25));
+      const totalItems = Array.isArray(items) ? items.length : 0;
+      const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+      const currentPage = Math.min(Math.max(1, Number(devicePagination.page || 1)), totalPages);
+      devicePagination.page = currentPage;
+      const startIndex = (currentPage - 1) * perPage;
+      const endIndex = startIndex + perPage;
+      return {
+        items: (items || []).slice(startIndex, endIndex),
+        totalItems,
+        totalPages,
+        currentPage,
+        startIndex,
+        endIndex: Math.min(endIndex, totalItems),
+        perPage
+      };
+    }
+
+    function setDevicePage(page){
+      devicePagination.page = Math.max(1, Number(page || 1));
+      renderDevices();
+      const section = document.getElementById('devicesSection');
+      if(section) section.scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+
+    function renderDevicePaginationControls(meta){
+      if(!meta || meta.totalPages <= 1) return '';
+      return `
+        <div class="card" style="padding:12px; margin-top:12px;">
+          <div class="toolbar" style="margin-bottom:8px; align-items:center">
+            <div class="hint">الصفحة ${meta.currentPage} من ${meta.totalPages} — عرض ${meta.startIndex + 1} إلى ${meta.endIndex} من أصل ${meta.totalItems}</div>
+          </div>
+          <div class="actions">
+            <button type="button" class="small secondary" ${meta.currentPage <= 1 ? 'disabled' : ''} onclick="setDevicePage(1)">الأولى</button>
+            <button type="button" class="small secondary" ${meta.currentPage <= 1 ? 'disabled' : ''} onclick="setDevicePage(${meta.currentPage - 1})">السابق</button>
+            <button type="button" class="small secondary" ${meta.currentPage >= meta.totalPages ? 'disabled' : ''} onclick="setDevicePage(${meta.currentPage + 1})">التالي</button>
+            <button type="button" class="small secondary" ${meta.currentPage >= meta.totalPages ? 'disabled' : ''} onclick="setDevicePage(${meta.totalPages})">الأخيرة</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function openDeviceInPagedList(deviceId){
+      if(!deviceId) return;
+      const filteredDevices = getFilteredDevices();
+      const index = filteredDevices.findIndex(d => d.id === deviceId);
+      if(index < 0) return;
+      const perPage = Math.max(1, Number(devicePagination.perPage || 25));
+      devicePagination.page = Math.floor(index / perPage) + 1;
+      renderDevices();
+      setTimeout(() => {
+        const row = document.getElementById(`device_row_${deviceId}`);
+        if(row) row.scrollIntoView({ behavior:'smooth', block:'center' });
+      }, 80);
+    }
+
     function setDeviceSearch(value){
       deviceFilters.search = String(value || '');
       highlightedDeviceId = null;
+      resetDevicePagination();
       renderDevices();
     }
 
     function setDeviceFilter(type){
       deviceFilters.type = type || 'all';
+      resetDevicePagination();
       renderDevices();
     }
 
@@ -5494,11 +5624,7 @@ window.addEventListener('load', function(){
         return;
       }
       highlightedDeviceId = found.id || null;
-      renderDevices();
-      setTimeout(() => {
-        const row = document.getElementById(`device_row_${found.id}`);
-        if(row) row.scrollIntoView({ behavior:'smooth', block:'center' });
-      }, 80);
+      openDeviceInPagedList(found.id);
       showDeviceSummaryByReceipt(found.receiptNumber);
     }
 
