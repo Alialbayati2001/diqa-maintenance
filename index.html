@@ -6512,6 +6512,7 @@ window.addEventListener('load', function(){
           <td>${escapeHtml(c.notes || '—')}</td>
           <td>${Number(c.finalRepairAmount || 0).toLocaleString('ar-IQ')}</td>
           <td>${formatDateTime(c.completedAt)}</td>
+          <td><button type="button" class="small" onclick="sendCompletionWhatsapp('${'${escapeHtml(c.deviceId)}'}')">واتساب</button></td>
         </tr>
       `).join('');
       document.getElementById('completionSection').innerHTML = `
@@ -6567,9 +6568,10 @@ window.addEventListener('load', function(){
                 <th>ملاحظات الفني</th>
                 <th>المبلغ النهائي</th>
                 <th>وقت الإتمام</th>
+                <th>إجراء</th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="8" class="muted">لا توجد عمليات إتمام</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="9" class="muted">لا توجد عمليات إتمام</td></tr>`}</tbody>
           </table>
         </div>
       `;
@@ -6616,6 +6618,7 @@ window.addEventListener('load', function(){
 
     async function createCompletion(e){
       e.preventDefault();
+      const shouldOpenWhatsapp = window.confirm('بعد اعتماد الإتمام، هل تريد فتح واتساب لإرسال رسالة للزبون؟ يمكنك أيضاً الإرسال لاحقاً من زر واتساب.');
       const deviceId = document.getElementById('completionDeviceId').value;
       const device = db.devices.find(d => d.id === deviceId);
       if(!device){ alert('اختر جهازاً صحيحاً'); return; }
@@ -6665,10 +6668,13 @@ window.addEventListener('load', function(){
       saveDB();
       buildNav();
       alert('تم اعتماد إتمام الجهاز بنجاح');
+      if(shouldOpenWhatsapp){
+        setTimeout(() => sendCompletionWhatsapp(device.id), 50);
+      }
       e.target.reset();
       renderAll();
       buildNav();
-      openSection('devices');
+      openSection('completion');
     }
 
     function requestReturn(partSlipId){
