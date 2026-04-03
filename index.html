@@ -4948,6 +4948,7 @@ function renderDevices(){
       const notRepairedCount = db.devices.filter(d => d.status === 'not_repaired').length;
       const completeCount = db.devices.filter(d => d.status === 'complete').length;
       const deliveredCount = db.devices.filter(d => d.status === 'delivered').length;
+      const deliveredCustomerCount = db.devices.filter(d => d.status === 'delivered_customer').length;
       const receivedCount = db.devices.filter(d => d.status === 'received').length;
       const awaitApprovalCount = db.devices.filter(d => d.status === 'await_approval').length;
       const awaitPartsCount = db.devices.filter(d => d.status === 'await_parts').length;
