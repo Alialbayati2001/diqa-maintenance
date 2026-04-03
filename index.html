@@ -4540,14 +4540,14 @@ function renderShopReceive(){
           <div class="summary-card"><div class="k">رقم الوصل الحالي</div><div class="v">${escapeHtml(editTarget?.receiptNumber || '—')}</div></div>
           <div class="summary-card"><div class="k">الحالة الحالية</div><div class="v">${badge(deviceStatusMap, editTarget?.status || 'received')}</div></div>
           <div class="summary-card"><div class="k">عدد فواتير التجهيز المرتبطة</div><div class="v">${linkedRequests.length}</div></div>
-          <div class="summary-card"><div class="k">يمكنك الآن</div><div class="v">تعديل أي حقل أو حذف فاتورة فقط بدون حذف الجهاز</div></div>
+          <div class="summary-card"><div class="k">يمكنك الآن</div><div class="v">تعديل أي حقل أو حذف فاتورة فقط بدون حذف الجهاز حتى لو كانت حالته تم التسليم</div></div>
         </div>
       ` : '';
       document.getElementById('shopReceiveSection').innerHTML = `
         <div class="section-title">
           <div>
             <h2>${isEditing ? 'تعديل وصل الاستلام' : 'استلام جهاز من الزبون'}</h2>
-            <p>${isEditing ? `ظهرت لك البيانات القديمة للوصول رقم ${escapeHtml(editTarget?.receiptNumber || '')} مع الوصولات المخرجة عليه، ويمكنك تعديل أي شيء ثم الضغط على حفظ التعديلات.` : 'هذه الصفحة لموظف المحل والمدير لاستلام الجهاز وإرساله إلى الصيانة، بدون كتابة رقم فاتورة في هذه المرحلة'}</p>
+            <p>${isEditing ? `ظهرت لك البيانات القديمة للوصول رقم ${escapeHtml(editTarget?.receiptNumber || '')} مع كل الفواتير المخرجة على هذا الجهاز، حتى لو كانت حالته تم التسليم، ويمكنك تعديل أي شيء ثم الضغط على حفظ التعديلات.` : 'هذه الصفحة لموظف المحل والمدير لاستلام الجهاز وإرساله إلى الصيانة، بدون كتابة رقم فاتورة في هذه المرحلة'}</p>
           </div>
         </div>
         ${editingSummaryHtml}
@@ -5062,7 +5062,7 @@ function renderDevices(){
         <div class="section-title">
           <div>
             <h2>قائمة الأجهزة</h2>
-            <p>كل وصولات الاستلام والحالات الحالية</p>
+            <p>كل وصولات الاستلام والحالات الحالية، ويمكن للمدير فتح تعديل أي جهاز من هنا بما فيها الأجهزة التي تم تسليمها مع فواتيرها المستخدمة</p>
           </div>
         </div>
 
@@ -5078,6 +5078,7 @@ function renderDevices(){
             <option value="sent_to_company_repair" ${deviceFilters.type === 'sent_to_company_repair' ? 'selected' : ''}>مرسل للشركة للتصليح (${sentToCompanyRepairCount})</option>
             <option value="delivered_company" ${deviceFilters.type === 'delivered_company' ? 'selected' : ''}>تم إرساله للشركة (${deliveredCompanyCount})</option>
             <option value="delivered" ${deviceFilters.type === 'delivered' ? 'selected' : ''}>تم التسليم (${deliveredCount})</option>
+            <option value="delivered_customer" ${deviceFilters.type === 'delivered_customer' ? 'selected' : ''}>تم تسليمه للزبون (${deliveredCustomerCount})</option>
             <option value="not_repaired" ${deviceFilters.type === 'not_repaired' ? 'selected' : ''}>لم يتم التصليح (${notRepairedCount})</option>
             <option value="overdue" ${deviceFilters.type === 'overdue' ? 'selected' : ''}>الأجهزة المتأخرة (${overdueCount})</option>
           </select>
@@ -5486,6 +5487,7 @@ window.addEventListener('load', function(){
           case 'sent_to_company_repair': typeMatch = d.status === 'sent_to_company_repair'; break;
           case 'delivered_company': typeMatch = d.status === 'delivered_company'; break;
           case 'delivered': typeMatch = d.status === 'delivered'; break;
+          case 'delivered_customer': typeMatch = d.status === 'delivered_customer'; break;
           case 'received': typeMatch = d.status === 'received'; break;
           case 'await_parts': typeMatch = d.status === 'await_parts'; break;
           case 'await_approval': typeMatch = d.status === 'await_approval'; break;
