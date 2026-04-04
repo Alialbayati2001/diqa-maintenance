@@ -5997,6 +5997,44 @@ window.addEventListener('load', function(){
       if(error) throw error;
     }
 
+    async function handleCompanyRequest(requestId, nextStatus){
+      const allowedStatuses = ['prepared', 'not_prepared'];
+      if(!allowedStatuses.includes(nextStatus)) return;
+
+      const idx = (db.supplyRequests || []).findIndex(r => String(r.id || '') === String(requestId || ''));
+      if(idx === -1){
+        alert('لم يتم العثور على الفاتورة');
+        return;
+      }
+
+      const current = normalizeCompanyRequestRow(db.supplyRequests[idx]);
+      if(!current) return;
+
+      const updated = {
+        ...current,
+        status: nextStatus,
+        companyHandledBy: currentUser ? currentUser.fullName : (current.companyHandledBy || '—'),
+        updatedAt: nowISO()
+      };
+
+      db.supplyRequests[idx] = updated;
+      saveDB(true);
+
+      try{
+        await upsertSingleSupplyRequest(updated);
+      }catch(error){
+        console.error('handleCompanyRequest upsert failed:', error);
+        db.supplyRequests[idx] = current;
+        saveDB(true);
+        alert('حدث خطأ أثناء تحديث حالة الفاتورة: ' + (error && (error.message || error.details || error.code) ? (error.message || error.details || error.code) : 'خطأ غير معروف'));
+        return;
+      }
+
+      buildNav();
+      renderAll();
+    }
+
+
     function getDeviceCompanyRepairTransferEntry(deviceId){
       return normalizeDeviceCompanyRepairTransferEntry((db.deviceCompanyRepairTransfers || {})[deviceId]) || null;
     }
