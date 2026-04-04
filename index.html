@@ -1829,6 +1829,7 @@ const APP_CONFIG = {
     let pendingSave = false;
     let deviceFilters = { search:'', type:'all' };
     let devicePagination = { page:1, perPage:25 };
+    let companyPagination = { page:1, perPage:10, search:'' };
     let scannerStream = null;
     let scannerInterval = null;
     let scannerDetector = null;
@@ -5962,6 +5963,7 @@ window.addEventListener('load', function(){
       if(!r || typeof r !== 'object') return null;
       return {
         id: String(r.id || ''),
+        deviceId: r.deviceId || r.device_id || '',
         salesInvoiceNumber: r.salesInvoiceNumber || r.requestNumber || '—',
         salesInvoiceAmount: Number(r.salesInvoiceAmount || 0),
         receiptNumber: r.receiptNumber || r.receipt_number_snapshot || '—',
@@ -5970,7 +5972,9 @@ window.addEventListener('load', function(){
         notes: r.notes || '—',
         status: r.status || 'pending',
         sentBy: r.sentBy || r.requested_by || '—',
-        companyHandledBy: r.companyHandledBy || r.company_handled_by || '—'
+        companyHandledBy: r.companyHandledBy || r.company_handled_by || '—',
+        createdAt: r.createdAt || r.requestedAt || r.requested_at || null,
+        updatedAt: r.updatedAt || r.updated_at || r.requestedAt || r.requested_at || null
       };
     }
 
@@ -6082,12 +6086,145 @@ window.addEventListener('load', function(){
       alert('تم استلام الجهاز في الصيانة');
     }
 
+
+    function resetCompanyPagination(){
+      companyPagination.page = 1;
+    }
+
+    function getCompanySearchQuery(){
+      return String(companyPagination.search || '').trim();
+    }
+
+    function setCompanySearch(value){
+      companyPagination.search = String(value || '').trim();
+      companyPagination.page = 1;
+      renderCompany();
+    }
+
+    function setCompanyPage(page){
+      companyPagination.page = Math.max(1, Number(page || 1));
+      renderCompany();
+      const section = document.getElementById('companySection');
+      if(section) section.scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+
+    function getCompanyRequestSearchText(r){
+      return [
+        r.salesInvoiceNumber,
+        r.receiptNumber,
+        r.customerName,
+        r.partDescription,
+        r.notes,
+        r.sentBy,
+        r.companyHandledBy,
+        r.status,
+        getLatestTechnicianNoteForDevice(r.deviceId)
+      ].map(v => String(v || '').toLowerCase()).join(' ');
+    }
+
+    function getCompanyRequestMeta(requests, query){
+      const normalizedQuery = String(query || '').trim().toLowerCase();
+      const sorted = (Array.isArray(requests) ? requests : []).slice().sort((a, b) => {
+        const aIsPrepared = a.status === 'prepared';
+        const bIsPrepared = b.status === 'prepared';
+        if(aIsPrepared !== bIsPrepared) return aIsPrepared ? 1 : -1;
+        return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+      });
+
+      const filtered = normalizedQuery
+        ? sorted.filter(r => getCompanyRequestSearchText(r).includes(normalizedQuery))
+        : sorted;
+
+      if(normalizedQuery){
+        const perPage = 25;
+        const totalItems = filtered.length;
+        const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+        const currentPage = Math.min(Math.max(1, Number(companyPagination.page || 1)), totalPages);
+        companyPagination.page = currentPage;
+        const startIndex = (currentPage - 1) * perPage;
+        const endIndex = startIndex + perPage;
+        return {
+          items: filtered.slice(startIndex, endIndex),
+          totalItems,
+          totalPages,
+          currentPage,
+          startIndex,
+          endIndex: Math.min(endIndex, totalItems),
+          perPage,
+          pendingCount: filtered.filter(r => r.status !== 'prepared').length,
+          preparedCount: filtered.filter(r => r.status === 'prepared').length,
+          mode: 'search'
+        };
+      }
+
+      const active = filtered.filter(r => r.status !== 'prepared');
+      const prepared = filtered.filter(r => r.status === 'prepared');
+      const perPage = Math.max(1, Number(companyPagination.perPage || 10));
+      const preparedPages = Math.max(1, Math.ceil(Math.max(0, prepared.length - perPage) / perPage));
+      const totalPages = Math.max(1, 1 + preparedPages);
+      const currentPage = Math.min(Math.max(1, Number(companyPagination.page || 1)), totalPages);
+      companyPagination.page = currentPage;
+
+      let items;
+      let startIndex;
+      let endIndex;
+      if(currentPage === 1){
+        items = active.concat(prepared.slice(0, perPage));
+        startIndex = 0;
+        endIndex = items.length;
+      }else{
+        const preparedStart = perPage + ((currentPage - 2) * perPage);
+        const preparedEnd = preparedStart + perPage;
+        items = prepared.slice(preparedStart, preparedEnd);
+        startIndex = preparedStart;
+        endIndex = Math.min(preparedEnd, prepared.length);
+      }
+
+      return {
+        items,
+        totalItems: filtered.length,
+        totalPages,
+        currentPage,
+        startIndex,
+        endIndex,
+        perPage,
+        pendingCount: active.length,
+        preparedCount: prepared.length,
+        mode: 'default'
+      };
+    }
+
+    function renderCompanyPaginationControls(meta){
+      if(!meta || meta.totalPages <= 1) return '';
+      const rangeText = meta.mode === 'search'
+        ? `نتائج البحث: عرض ${meta.totalItems ? (meta.startIndex + 1) : 0} إلى ${meta.endIndex} من أصل ${meta.totalItems}`
+        : (meta.currentPage === 1
+          ? `الصفحة 1 تعرض غير المجهز + آخر ${Math.min(meta.preparedCount, meta.perPage)} طلبات مجهزة`
+          : `الصفحة ${meta.currentPage} تعرض الطلبات المجهزة الأقدم`);
+      return `
+        <div class="card" style="padding:12px; margin-top:12px;">
+          <div class="toolbar" style="margin-bottom:8px; align-items:center">
+            <div class="hint">${rangeText}</div>
+            <div class="hint">الصفحة ${meta.currentPage} من ${meta.totalPages}</div>
+          </div>
+          <div class="actions">
+            <button type="button" class="small secondary" ${meta.currentPage <= 1 ? 'disabled' : ''} onclick="setCompanyPage(1)">الأولى</button>
+            <button type="button" class="small secondary" ${meta.currentPage <= 1 ? 'disabled' : ''} onclick="setCompanyPage(${meta.currentPage - 1})">السابق</button>
+            <button type="button" class="small secondary" ${meta.currentPage >= meta.totalPages ? 'disabled' : ''} onclick="setCompanyPage(${meta.currentPage + 1})">التالي</button>
+            <button type="button" class="small secondary" ${meta.currentPage >= meta.totalPages ? 'disabled' : ''} onclick="setCompanyPage(${meta.totalPages})">الأخيرة</button>
+          </div>
+        </div>
+      `;
+    }
+
     function renderCompany(){
       const mobileChips = buildMobileSectionChips();
       const companyRequests = (Array.isArray(db.supplyRequests) ? db.supplyRequests : [])
         .map(normalizeCompanyRequestRow)
-        .filter(Boolean)
-        .sort((a, b) => String(b.id || '').localeCompare(String(a.id || '')));
+        .filter(Boolean);
+      const searchQuery = getCompanySearchQuery();
+      const companyMeta = getCompanyRequestMeta(companyRequests, searchQuery);
+      const visibleRequests = companyMeta.items || [];
       const missingPartsRows = getActiveMissingPartsEntries().map(({ device, entry }) => `
         <tr>
           <td>${escapeHtml(device.receiptNumber || entry.receiptNumber || '—')}</td>
@@ -6105,25 +6242,25 @@ window.addEventListener('load', function(){
         </tr>
       `).join('');
 
-      console.log('company requests render:', companyRequests);
-
-      const rows = companyRequests.map(r => `
+      const rows = visibleRequests.map(r => `
         <tr>
-          <td>${escapeHtml(r.salesInvoiceNumber || '—')}</td>
-          <td>${formatCurrency(r.salesInvoiceAmount || 0)}</td>
-          <td>${escapeHtml(r.receiptNumber || '—')}</td>
-          <td>${escapeHtml(r.customerName || '—')}</td>
-          <td>${escapeHtml(r.partDescription || '—')}</td>
-          <td>${escapeHtml(r.notes || '—')}</td>
-          <td>${escapeHtml(getLatestTechnicianNoteForDevice(r.deviceId) || '—')}</td>
-          <td>${badge(supplyStatusMap, r.status)}</td>
-          <td>${escapeHtml(r.sentBy || '—')}</td>
-          <td>${escapeHtml(r.companyHandledBy || '—')}</td>
-          <td>
+          <td data-label="رقم الفاتورة">${escapeHtml(r.salesInvoiceNumber || '—')}</td>
+          <td data-label="مبلغ الفاتورة">${formatCurrency(r.salesInvoiceAmount || 0)}</td>
+          <td data-label="مرجع الاستلام">${escapeHtml(r.receiptNumber || '—')}</td>
+          <td data-label="الزبون">${escapeHtml(r.customerName || '—')}</td>
+          <td data-label="المطلوب">${escapeHtml(r.partDescription || '—')}</td>
+          <td data-label="ملاحظات">${escapeHtml(r.notes || '—')}</td>
+          <td data-label="ملاحظات الفني">${escapeHtml(getLatestTechnicianNoteForDevice(r.deviceId) || '—')}</td>
+          <td data-label="الحالة">${badge(supplyStatusMap, r.status)}</td>
+          <td data-label="مرسل من">${escapeHtml(r.sentBy || '—')}</td>
+          <td data-label="معالج بواسطة">${escapeHtml(r.companyHandledBy || '—')}</td>
+          <td data-label="إجراء">
             <div class="actions">
               ${r.status === 'pending' ? `
                 <button class="small" onclick="handleCompanyRequest('${r.id}','prepared')">تم التجهيز</button>
                 <button class="small danger" onclick="handleCompanyRequest('${r.id}','not_prepared')">لم يتم التجهيز</button>
+              ` : r.status === 'not_prepared' ? `
+                <button class="small" onclick="handleCompanyRequest('${r.id}','prepared')">تم التجهيز الآن</button>
               ` : '<span class="muted">تمت المعالجة</span>'}
             </div>
           </td>
@@ -6176,6 +6313,12 @@ window.addEventListener('load', function(){
             <p>موظف الشركة يحدد هل تم تجهيز الفاتورة أم لا</p>
           </div>
         </div>
+        <div class="card" style="padding:12px; margin-bottom:12px;">
+          <div class="toolbar">
+            <input id="companyRequestSearch" class="search" value="${escapeHtml(searchQuery)}" placeholder="ابحث برقم الفاتورة أو الوصل أو اسم الزبون" oninput="setCompanySearch(this.value)" />
+            <div class="hint">غير مجهز: ${companyMeta.pendingCount} | مجهز: ${companyMeta.preparedCount}</div>
+          </div>
+        </div>
         <div class="table-wrap responsive-cards">
           <table>
             <thead>
@@ -6196,6 +6339,7 @@ window.addEventListener('load', function(){
             <tbody>${rows || `<tr><td colspan="11" class="muted">لا توجد طلبات واردة</td></tr>`}</tbody>
           </table>
         </div>
+        ${renderCompanyPaginationControls(companyMeta)}
 
         <div style="height:16px"></div>
 
@@ -6212,9 +6356,9 @@ window.addEventListener('load', function(){
                 <th>رقم الوصل</th>
                 <th>الزبون</th>
                 <th>الجهاز</th>
-                <th>النواقص المطلوبة</th>
-                <th>مضاف بواسطة</th>
-                <th>آخر تحديث</th>
+                <th>النواقص</th>
+                <th>آخر تحديث بواسطة</th>
+                <th>وقت التحديث</th>
                 <th>إجراء</th>
               </tr>
             </thead>
@@ -6226,25 +6370,24 @@ window.addEventListener('load', function(){
 
         <div class="section-title">
           <div>
-            <h2>أجهزة واردة من الصيانة للتصليح</h2>
-            <p>أجهزة تم تحويلها من فني الصيانة إلى الشركة لإجراء تصليح خاص</p>
+            <h2>أجهزة تم تسليمها إلى الشركة للتسليم الدلفري</h2>
+            <p>إذا تم التسليم النهائي للزبون من قبل الشركة اضغط تم التسليم النهائي</p>
           </div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap responsive-cards">
           <table>
             <thead>
               <tr>
                 <th>رقم الوصل</th>
                 <th>الزبون</th>
                 <th>الجهاز</th>
-                <th>سبب الإرسال</th>
-                <th>أرسل بواسطة</th>
-                <th>وقت الإرسال</th>
+                <th>مبلغ الصيانة</th>
+                <th>ملاحظات الفني</th>
                 <th>الحالة</th>
                 <th>إجراء</th>
               </tr>
             </thead>
-            <tbody>${companyRepairRows || `<tr><td colspan="8" class="muted">لا توجد أجهزة واردة من الصيانة للتصليح</td></tr>`}</tbody>
+            <tbody>${companyDeliveryRows || `<tr><td colspan="7" class="muted">لا توجد أجهزة مسلمة للشركة حالياً</td></tr>`}</tbody>
           </table>
         </div>
 
@@ -6252,86 +6395,28 @@ window.addEventListener('load', function(){
 
         <div class="section-title">
           <div>
-            <h2>الأجهزة المرسلة للشركة / دلفري</h2>
-            <p>الأجهزة التي تم إرسالها من المحل وتنتظر التسليم النهائي من موظف الشركة</p>
+            <h2>أجهزة الصيانة المرسلة إلى الشركة</h2>
+            <p>عند استلام الشركة للجهاز من الصيانة اضغط تم الاستلام من الصيانة، وبعدها عند تسليمه للصيانة اضغط تسليم إلى الصيانة</p>
           </div>
         </div>
-
-        <div class="table-wrap">
+        <div class="table-wrap responsive-cards">
           <table>
             <thead>
               <tr>
                 <th>رقم الوصل</th>
                 <th>الزبون</th>
                 <th>الجهاز</th>
-                <th>المبلغ</th>
-                <th>ملاحظات الفني</th>
+                <th>الملاحظة</th>
+                <th>مرسل من</th>
+                <th>وقت الإرسال</th>
                 <th>الحالة</th>
                 <th>إجراء</th>
               </tr>
             </thead>
-            <tbody>${companyDeliveryRows || `<tr><td colspan="6" class="muted">لا توجد أجهزة بانتظار التسليم من الشركة</td></tr>`}</tbody>
+            <tbody>${companyRepairRows || `<tr><td colspan="8" class="muted">لا توجد أجهزة مرسلة من الصيانة إلى الشركة حالياً</td></tr>`}</tbody>
           </table>
         </div>
       `;
-    }
-
-    async function handleCompanyRequest(requestId, status){
-      const r = db.supplyRequests.find(x => x.id === requestId);
-      if(!r) return;
-      const previousRequest = { ...r };
-      const previousPartSlips = (db.partSlips || []).map(x => ({ ...x }));
-      let createdSlip = null;
-      try {
-        r.status = status;
-        r.companyHandledBy = currentUser ? currentUser.fullName : '—';
-        r.updatedAt = nowISO();
-        const device = db.devices.find(d => d.id === r.deviceId);
-        if(status === 'prepared' && !db.partSlips.some(ps => ps.requestId === r.id)){
-          createdSlip = {
-            id: uid('ps'),
-            requestId: r.id,
-            salesInvoiceNumber: r.salesInvoiceNumber,
-            salesInvoiceAmount: r.salesInvoiceAmount || 0,
-            deviceId: r.deviceId,
-            receiptNumber: r.receiptNumber,
-            customerName: r.customerName,
-            partDescription: r.partDescription,
-            notes: r.notes,
-            status: 'pending',
-            preparedBy: currentUser ? currentUser.fullName : '—',
-            createdAt: nowISO(),
-            updatedAt: nowISO(),
-            usedInCompletionId: null,
-            returnReason: '',
-            returnRequestedBy: null,
-            returnHandledBy: null,
-            returnHandledAt: null
-          };
-          db.partSlips.unshift(createdSlip);
-        }
-
-        renderAll();
-
-        if(device && status === 'not_prepared'){
-          await updateDeviceStatus(device.id, 'await_approval');
-        }
-
-        if(APP_CONFIG.dataProvider === 'supabase'){
-          await upsertSingleSupplyRequest(r);
-          if(createdSlip) await upsertSinglePartSlip(createdSlip);
-          saveDB(true);
-        } else {
-          saveDB();
-        }
-        renderAll();
-      } catch(err){
-        Object.assign(r, previousRequest);
-        db.partSlips = previousPartSlips;
-        renderAll();
-        console.error('handleCompanyRequest error:', err);
-        alert('حدث خطأ أثناء تحديث الطلب: ' + (err && (err.message || err.details || err.code) ? (err.message || err.details || err.code) : 'خطأ غير معروف'));
-      }
     }
 
     function renderTechnician(){
