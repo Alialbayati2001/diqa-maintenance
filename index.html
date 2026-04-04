@@ -5717,16 +5717,16 @@ window.addEventListener('load', function(){
       `).join('');
       const rows = db.supplyRequests.map(r => `
         <tr>
-          <td>${escapeHtml(r.salesInvoiceNumber || '—')}</td>
-          <td>${formatCurrency(r.salesInvoiceAmount || 0)}</td>
-          <td>${escapeHtml(r.receiptNumber)}</td>
-          <td>${escapeHtml(r.customerName)}</td>
-          <td>${escapeHtml(r.partDescription || '—')}</td>
-          <td>${escapeHtml(r.notes || '—')}</td>
-          <td>${escapeHtml(getLatestTechnicianNoteForDevice(r.deviceId) || '—')}</td>
-          <td>${badge(supplyStatusMap, r.status)}</td>
-          <td>${escapeHtml(r.sentBy)}</td>
-          <td>${formatDateTime(r.createdAt)}</td>
+          <td data-label="رقم الفاتورة">${escapeHtml(r.salesInvoiceNumber || '—')}</td>
+          <td data-label="مبلغ الفاتورة">${formatCurrency(r.salesInvoiceAmount || 0)}</td>
+          <td data-label="مرجع الاستلام">${escapeHtml(r.receiptNumber)}</td>
+          <td data-label="الزبون">${escapeHtml(r.customerName)}</td>
+          <td data-label="المطلوب">${escapeHtml(r.partDescription || '—')}</td>
+          <td data-label="ملاحظات">${escapeHtml(r.notes || '—')}</td>
+          <td data-label="ملاحظات الفني">${escapeHtml(getLatestTechnicianNoteForDevice(r.deviceId) || '—')}</td>
+          <td data-label="الحالة">${badge(supplyStatusMap, r.status)}</td>
+          <td data-label="المرسل">${escapeHtml(r.sentBy)}</td>
+          <td data-label="الوقت">${formatDateTime(r.createdAt)}</td>
         </tr>
       `).join('');
       document.getElementById('supplyRequestsSection').innerHTML = `
@@ -5770,7 +5770,7 @@ window.addEventListener('load', function(){
           <div style="grid-column:1/-1"><button type="submit">إرسال إلى الشركة</button></div>
         </form>
         <div style="height:16px"></div>
-        <div class="table-wrap">
+        <div class="table-wrap responsive-cards">
           <table>
             <thead>
               <tr>
@@ -5974,6 +5974,25 @@ window.addEventListener('load', function(){
       };
     }
 
+
+    async function upsertSingleSupplyRequest(item){
+      if(APP_CONFIG.dataProvider !== 'supabase') return;
+      const payload = SupplyRequestsAPI.serialize(item);
+      const { error } = await supabaseClient
+        .from(APP_CONFIG.supplyRequestsTable)
+        .upsert(payload, { onConflict: 'id' });
+      if(error) throw error;
+    }
+
+    async function upsertSinglePartSlip(item){
+      if(APP_CONFIG.dataProvider !== 'supabase') return;
+      const payload = PartSlipsAPI.serialize(item);
+      const { error } = await supabaseClient
+        .from(APP_CONFIG.partSlipsTable)
+        .upsert(payload, { onConflict: 'id' });
+      if(error) throw error;
+    }
+
     function getDeviceCompanyRepairTransferEntry(deviceId){
       return normalizeDeviceCompanyRepairTransferEntry((db.deviceCompanyRepairTransfers || {})[deviceId]) || null;
     }
@@ -6157,7 +6176,7 @@ window.addEventListener('load', function(){
             <p>موظف الشركة يحدد هل تم تجهيز الفاتورة أم لا</p>
           </div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap responsive-cards">
           <table>
             <thead>
               <tr>
@@ -6260,45 +6279,59 @@ window.addEventListener('load', function(){
     async function handleCompanyRequest(requestId, status){
       const r = db.supplyRequests.find(x => x.id === requestId);
       if(!r) return;
-      r.status = status;
-      r.companyHandledBy = currentUser ? currentUser.fullName : '—';
-      r.updatedAt = nowISO();
-      const device = db.devices.find(d => d.id === r.deviceId);
-      if(status === 'prepared' && !db.partSlips.some(ps => ps.requestId === r.id)){
-        db.partSlips.unshift({
-          id: uid('ps'),
-          requestId: r.id,
-          salesInvoiceNumber: r.salesInvoiceNumber,
-          salesInvoiceAmount: r.salesInvoiceAmount || 0,
-          deviceId: r.deviceId,
-          receiptNumber: r.receiptNumber,
-          customerName: r.customerName,
-          partDescription: r.partDescription,
-          notes: r.notes,
-          status: 'pending',
-          preparedBy: currentUser ? currentUser.fullName : '—',
-          createdAt: nowISO(),
-          updatedAt: nowISO(),
-          usedInCompletionId: null,
-          returnReason: '',
-          returnRequestedBy: null,
-          returnHandledBy: null,
-          returnHandledAt: null
-        });
+      const previousRequest = { ...r };
+      const previousPartSlips = (db.partSlips || []).map(x => ({ ...x }));
+      let createdSlip = null;
+      try {
+        r.status = status;
+        r.companyHandledBy = currentUser ? currentUser.fullName : '—';
+        r.updatedAt = nowISO();
+        const device = db.devices.find(d => d.id === r.deviceId);
+        if(status === 'prepared' && !db.partSlips.some(ps => ps.requestId === r.id)){
+          createdSlip = {
+            id: uid('ps'),
+            requestId: r.id,
+            salesInvoiceNumber: r.salesInvoiceNumber,
+            salesInvoiceAmount: r.salesInvoiceAmount || 0,
+            deviceId: r.deviceId,
+            receiptNumber: r.receiptNumber,
+            customerName: r.customerName,
+            partDescription: r.partDescription,
+            notes: r.notes,
+            status: 'pending',
+            preparedBy: currentUser ? currentUser.fullName : '—',
+            createdAt: nowISO(),
+            updatedAt: nowISO(),
+            usedInCompletionId: null,
+            returnReason: '',
+            returnRequestedBy: null,
+            returnHandledBy: null,
+            returnHandledAt: null
+          };
+          db.partSlips.unshift(createdSlip);
+        }
+
+        renderAll();
+
+        if(device && status === 'not_prepared'){
+          await updateDeviceStatus(device.id, 'await_approval');
+        }
+
+        if(APP_CONFIG.dataProvider === 'supabase'){
+          await upsertSingleSupplyRequest(r);
+          if(createdSlip) await upsertSinglePartSlip(createdSlip);
+          saveDB(true);
+        } else {
+          saveDB();
+        }
+        renderAll();
+      } catch(err){
+        Object.assign(r, previousRequest);
+        db.partSlips = previousPartSlips;
+        renderAll();
+        console.error('handleCompanyRequest error:', err);
+        alert('حدث خطأ أثناء تحديث الطلب: ' + (err && (err.message || err.details || err.code) ? (err.message || err.details || err.code) : 'خطأ غير معروف'));
       }
-      if(device && status === 'not_prepared'){
-        await updateDeviceStatus(device.id, 'await_approval');
-      }
-      if(APP_CONFIG.dataProvider === 'supabase'){
-        await Promise.all([
-          SupplyRequestsAPI.syncAll(db.supplyRequests || []),
-          PartSlipsAPI.syncAll(db.partSlips || [])
-        ]);
-        saveDB(true);
-      } else {
-        saveDB();
-      }
-      renderAll();
     }
 
     function renderTechnician(){
