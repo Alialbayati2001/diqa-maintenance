@@ -2514,7 +2514,6 @@ const APP_CONFIG = {
       if(arraysRealtimeChannel || APP_CONFIG.dataProvider !== 'supabase') return arraysRealtimeChannel;
       let refreshAllTimer = null;
       const refreshAll = async () => {
-        if(savingPromise) return;
         clearTimeout(refreshAllTimer);
         refreshAllTimer = setTimeout(async () => {
           const [supplyRequests, partSlips, completions] = await Promise.all([
@@ -2526,8 +2525,8 @@ const APP_CONFIG = {
           db.partSlips = partSlips;
           db.completions = completions;
           localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-          if(currentUser) scheduleSmartRender({ delay:180 });
-        }, 450);
+          if(currentUser) scheduleSmartRender({ delay:80 });
+        }, 120);
       };
       arraysRealtimeChannel = supabaseClient
         .channel('repair-array-tables-live')
@@ -5919,13 +5918,19 @@ window.addEventListener('load', function(){
             requested_at: requestItem.createdAt || new Date().toISOString(),
             updated_at: requestItem.updatedAt || new Date().toISOString()
           };
-          const { error: insertError } = await supabaseClient
+          const { data: insertedRow, error: insertError } = await supabaseClient
             .from(APP_CONFIG.supplyRequestsTable)
-            .insert(directRequestRow);
+            .insert(directRequestRow)
+            .select('*')
+            .single();
           if(insertError) throw insertError;
+          if(insertedRow){
+            const normalizedInserted = normalizeCompanyRequestRow(insertedRow);
+            if(normalizedInserted) Object.assign(requestItem, normalizedInserted);
+          }
         }
 
-        db.supplyRequests.unshift(requestItem);
+        db.supplyRequests = [requestItem, ...(db.supplyRequests || []).filter(x => x.id !== requestItem.id)];
 
         try {
           await updateDeviceStatus(device.id, 'await_parts');
@@ -5934,14 +5939,6 @@ window.addEventListener('load', function(){
         }
 
         saveDB(true);
-
-        if(APP_CONFIG.dataProvider === 'supabase'){
-          try {
-            db.supplyRequests = await SupplyRequestsAPI.getAll();
-          } catch(refreshErr){
-            console.error('refresh supply requests failed:', refreshErr);
-          }
-        }
 
         buildNav();
         notifyCompanyRequestsIfNeeded();
@@ -6267,7 +6264,7 @@ window.addEventListener('load', function(){
       r.companyHandledBy = currentUser ? currentUser.fullName : '—';
       r.updatedAt = nowISO();
       const device = db.devices.find(d => d.id === r.deviceId);
-      if(status === 'prepared'){
+      if(status === 'prepared' && !db.partSlips.some(ps => ps.requestId === r.id)){
         db.partSlips.unshift({
           id: uid('ps'),
           requestId: r.id,
@@ -6292,7 +6289,15 @@ window.addEventListener('load', function(){
       if(device && status === 'not_prepared'){
         await updateDeviceStatus(device.id, 'await_approval');
       }
-      saveDB();
+      if(APP_CONFIG.dataProvider === 'supabase'){
+        await Promise.all([
+          SupplyRequestsAPI.syncAll(db.supplyRequests || []),
+          PartSlipsAPI.syncAll(db.partSlips || [])
+        ]);
+        saveDB(true);
+      } else {
+        saveDB();
+      }
       renderAll();
     }
 
