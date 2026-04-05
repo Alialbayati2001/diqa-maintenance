@@ -6008,6 +6008,55 @@ window.addEventListener('load', function(){
       if(error) throw error;
     }
 
+
+    async function handleCompanyRequest(requestId, status){
+      const request = (Array.isArray(db.supplyRequests) ? db.supplyRequests : []).find(r => String(r?.id || '') === String(requestId || ''));
+      if(!request){
+        alert('لم يتم العثور على الفاتورة المطلوبة');
+        return;
+      }
+
+      const nextStatus = String(status || '').trim();
+      if(!['prepared','not_prepared'].includes(nextStatus)){
+        alert('حالة غير صالحة');
+        return;
+      }
+
+      const previousRequest = { ...request };
+      const previousPartSlips = Array.isArray(db.partSlips) ? db.partSlips.map(p => ({ ...p })) : [];
+
+      try{
+        request.status = nextStatus;
+        request.companyHandledBy = currentUser ? currentUser.fullName : 'موظف الشركة';
+        request.updatedAt = nowISO();
+
+        let createdSlips = [];
+        if(nextStatus === 'prepared'){
+          createdSlips = ensurePreparedSupplyRequestsHavePartSlips(request.deviceId) || [];
+        }
+
+        saveDB(true);
+
+        if(APP_CONFIG.dataProvider === 'supabase'){
+          await upsertSingleSupplyRequest(request);
+          if(createdSlips.length){
+            await Promise.all(createdSlips.map(slip => upsertSinglePartSlip(slip)));
+          }
+          await refreshArrayTablesFromSupabase();
+        }
+
+        renderAll();
+        alert(nextStatus === 'prepared' ? 'تم تجهيز الفاتورة بنجاح' : 'تم تسجيل الفاتورة كـ لم يتم التجهيز');
+      }catch(err){
+        Object.assign(request, previousRequest);
+        db.partSlips = previousPartSlips;
+        saveDB(true);
+        renderAll();
+        console.error('handleCompanyRequest failed:', err);
+        alert('تعذر تحديث حالة الفاتورة: ' + (err && (err.message || err.details || err.code) ? (err.message || err.details || err.code) : 'خطأ غير معروف'));
+      }
+    }
+
     function getDeviceCompanyRepairTransferEntry(deviceId){
       return normalizeDeviceCompanyRepairTransferEntry((db.deviceCompanyRepairTransfers || {})[deviceId]) || null;
     }
