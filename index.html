@@ -5997,44 +5997,6 @@ window.addEventListener('load', function(){
       if(error) throw error;
     }
 
-    async function handleCompanyRequest(requestId, nextStatus){
-      const allowedStatuses = ['prepared', 'not_prepared'];
-      if(!allowedStatuses.includes(nextStatus)) return;
-
-      const idx = (db.supplyRequests || []).findIndex(r => String(r.id || '') === String(requestId || ''));
-      if(idx === -1){
-        alert('لم يتم العثور على الفاتورة');
-        return;
-      }
-
-      const current = normalizeCompanyRequestRow(db.supplyRequests[idx]);
-      if(!current) return;
-
-      const updated = {
-        ...current,
-        status: nextStatus,
-        companyHandledBy: currentUser ? currentUser.fullName : (current.companyHandledBy || '—'),
-        updatedAt: nowISO()
-      };
-
-      db.supplyRequests[idx] = updated;
-      saveDB(true);
-
-      try{
-        await upsertSingleSupplyRequest(updated);
-      }catch(error){
-        console.error('handleCompanyRequest upsert failed:', error);
-        db.supplyRequests[idx] = current;
-        saveDB(true);
-        alert('حدث خطأ أثناء تحديث حالة الفاتورة: ' + (error && (error.message || error.details || error.code) ? (error.message || error.details || error.code) : 'خطأ غير معروف'));
-        return;
-      }
-
-      buildNav();
-      renderAll();
-    }
-
-
     function getDeviceCompanyRepairTransferEntry(deviceId){
       return normalizeDeviceCompanyRepairTransferEntry((db.deviceCompanyRepairTransfers || {})[deviceId]) || null;
     }
@@ -6124,6 +6086,88 @@ window.addEventListener('load', function(){
       alert('تم استلام الجهاز في الصيانة');
     }
 
+
+    async function handleCompanyRequest(requestId, nextStatus){
+      const request = (db.supplyRequests || []).find(r => r.id === requestId);
+      if(!request){
+        alert('الفاتورة غير موجودة');
+        return;
+      }
+
+      const previousRequests = (db.supplyRequests || []).map(x => ({ ...x }));
+      const previousPartSlips = (db.partSlips || []).map(x => ({ ...x }));
+      const handledBy = currentUser ? currentUser.fullName : 'موظف الشركة';
+      const timestamp = nowISO();
+
+      try {
+        request.status = nextStatus;
+        request.companyHandledBy = handledBy;
+        request.updatedAt = timestamp;
+
+        let linkedSlip = (db.partSlips || []).find(p => p.requestId === request.id);
+
+        if(nextStatus === 'prepared'){
+          if(linkedSlip){
+            linkedSlip.salesInvoiceNumber = request.salesInvoiceNumber || linkedSlip.salesInvoiceNumber || '';
+            linkedSlip.deviceId = request.deviceId || linkedSlip.deviceId || '';
+            linkedSlip.receiptNumber = request.receiptNumber || linkedSlip.receiptNumber || '';
+            linkedSlip.customerName = request.customerName || linkedSlip.customerName || '';
+            linkedSlip.partDescription = request.partDescription || linkedSlip.partDescription || '';
+            linkedSlip.notes = request.notes || linkedSlip.notes || '';
+            linkedSlip.status = linkedSlip.status === 'used' ? 'used' : 'pending';
+            linkedSlip.preparedBy = handledBy;
+            linkedSlip.updatedAt = timestamp;
+          }else{
+            linkedSlip = {
+              id: uid('ps'),
+              requestId: request.id,
+              salesInvoiceNumber: request.salesInvoiceNumber || '',
+              deviceId: request.deviceId || '',
+              receiptNumber: request.receiptNumber || '',
+              customerName: request.customerName || '',
+              partDescription: request.partDescription || '',
+              notes: request.notes || '',
+              status: 'pending',
+              preparedBy: handledBy,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+              usedInCompletionId: null,
+              returnReason: '',
+              returnRequestedBy: null,
+              returnHandledBy: null,
+              returnHandledAt: null
+            };
+            db.partSlips = [linkedSlip, ...(db.partSlips || [])];
+          }
+        }else if(nextStatus === 'not_prepared' && linkedSlip && linkedSlip.status !== 'used'){
+          db.partSlips = (db.partSlips || []).filter(p => p.id !== linkedSlip.id);
+          linkedSlip = null;
+        }
+
+        if(APP_CONFIG.dataProvider === 'supabase'){
+          await upsertSingleSupplyRequest(request);
+          if(nextStatus === 'prepared' && linkedSlip){
+            await upsertSinglePartSlip(linkedSlip);
+          }else if(nextStatus === 'not_prepared'){
+            const slipToDelete = previousPartSlips.find(p => p.requestId === request.id && p.status !== 'used');
+            if(slipToDelete){
+              const { error } = await supabaseClient.from(APP_CONFIG.partSlipsTable).delete().eq('id', slipToDelete.id);
+              if(error) throw error;
+            }
+          }
+        }
+
+        saveDB(true);
+        renderAll();
+        buildNav();
+      }catch(error){
+        db.supplyRequests = previousRequests;
+        db.partSlips = previousPartSlips;
+        saveDB(true);
+        console.error('handleCompanyRequest failed:', error);
+        alert('حدث خطأ أثناء تحديث حالة الفاتورة: ' + (error && (error.message || error.details || error.code) ? (error.message || error.details || error.code) : 'خطأ غير معروف'));
+      }
+    }
 
     function resetCompanyPagination(){
       companyPagination.page = 1;
