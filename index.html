@@ -3169,6 +3169,7 @@ const deviceStatusMap = {
         db.supplyRequests = Array.isArray(supplyRequests) ? supplyRequests : [];
         db.partSlips = Array.isArray(partSlips) ? partSlips : [];
         db.completions = Array.isArray(completions) ? completions : [];
+        ensurePreparedSupplyRequestsHavePartSlips();
         saveDB(true);
       } catch (err) {
         console.error('refreshArrayTablesFromSupabase failed:', err);
@@ -6087,88 +6088,6 @@ window.addEventListener('load', function(){
     }
 
 
-    async function handleCompanyRequest(requestId, nextStatus){
-      const request = (db.supplyRequests || []).find(r => r.id === requestId);
-      if(!request){
-        alert('الفاتورة غير موجودة');
-        return;
-      }
-
-      const previousRequests = (db.supplyRequests || []).map(x => ({ ...x }));
-      const previousPartSlips = (db.partSlips || []).map(x => ({ ...x }));
-      const handledBy = currentUser ? currentUser.fullName : 'موظف الشركة';
-      const timestamp = nowISO();
-
-      try {
-        request.status = nextStatus;
-        request.companyHandledBy = handledBy;
-        request.updatedAt = timestamp;
-
-        let linkedSlip = (db.partSlips || []).find(p => p.requestId === request.id);
-
-        if(nextStatus === 'prepared'){
-          if(linkedSlip){
-            linkedSlip.salesInvoiceNumber = request.salesInvoiceNumber || linkedSlip.salesInvoiceNumber || '';
-            linkedSlip.deviceId = request.deviceId || linkedSlip.deviceId || '';
-            linkedSlip.receiptNumber = request.receiptNumber || linkedSlip.receiptNumber || '';
-            linkedSlip.customerName = request.customerName || linkedSlip.customerName || '';
-            linkedSlip.partDescription = request.partDescription || linkedSlip.partDescription || '';
-            linkedSlip.notes = request.notes || linkedSlip.notes || '';
-            linkedSlip.status = linkedSlip.status === 'used' ? 'used' : 'pending';
-            linkedSlip.preparedBy = handledBy;
-            linkedSlip.updatedAt = timestamp;
-          }else{
-            linkedSlip = {
-              id: uid('ps'),
-              requestId: request.id,
-              salesInvoiceNumber: request.salesInvoiceNumber || '',
-              deviceId: request.deviceId || '',
-              receiptNumber: request.receiptNumber || '',
-              customerName: request.customerName || '',
-              partDescription: request.partDescription || '',
-              notes: request.notes || '',
-              status: 'pending',
-              preparedBy: handledBy,
-              createdAt: timestamp,
-              updatedAt: timestamp,
-              usedInCompletionId: null,
-              returnReason: '',
-              returnRequestedBy: null,
-              returnHandledBy: null,
-              returnHandledAt: null
-            };
-            db.partSlips = [linkedSlip, ...(db.partSlips || [])];
-          }
-        }else if(nextStatus === 'not_prepared' && linkedSlip && linkedSlip.status !== 'used'){
-          db.partSlips = (db.partSlips || []).filter(p => p.id !== linkedSlip.id);
-          linkedSlip = null;
-        }
-
-        if(APP_CONFIG.dataProvider === 'supabase'){
-          await upsertSingleSupplyRequest(request);
-          if(nextStatus === 'prepared' && linkedSlip){
-            await upsertSinglePartSlip(linkedSlip);
-          }else if(nextStatus === 'not_prepared'){
-            const slipToDelete = previousPartSlips.find(p => p.requestId === request.id && p.status !== 'used');
-            if(slipToDelete){
-              const { error } = await supabaseClient.from(APP_CONFIG.partSlipsTable).delete().eq('id', slipToDelete.id);
-              if(error) throw error;
-            }
-          }
-        }
-
-        saveDB(true);
-        renderAll();
-        buildNav();
-      }catch(error){
-        db.supplyRequests = previousRequests;
-        db.partSlips = previousPartSlips;
-        saveDB(true);
-        console.error('handleCompanyRequest failed:', error);
-        alert('حدث خطأ أثناء تحديث حالة الفاتورة: ' + (error && (error.message || error.details || error.code) ? (error.message || error.details || error.code) : 'خطأ غير معروف'));
-      }
-    }
-
     function resetCompanyPagination(){
       companyPagination.page = 1;
     }
@@ -6624,8 +6543,71 @@ window.addEventListener('load', function(){
       `;
     }
 
+    function ensurePreparedSupplyRequestsHavePartSlips(deviceId = null){
+      const normalizedDeviceId = deviceId == null ? null : String(deviceId);
+      const created = [];
+      db.partSlips = Array.isArray(db.partSlips) ? db.partSlips : [];
+      db.supplyRequests = Array.isArray(db.supplyRequests) ? db.supplyRequests : [];
+
+      for(const req of db.supplyRequests){
+        if(!req || req.status !== 'prepared') continue;
+        if(normalizedDeviceId !== null && String(req.deviceId || '') !== normalizedDeviceId) continue;
+
+        const existing = db.partSlips.find(p =>
+          (p.requestId && req.id && String(p.requestId) === String(req.id)) ||
+          (
+            String(p.deviceId || '') === String(req.deviceId || '') &&
+            String(p.salesInvoiceNumber || '').trim() === String(req.salesInvoiceNumber || '').trim()
+          )
+        );
+
+        if(existing){
+          if(!existing.requestId && req.id) existing.requestId = req.id;
+          if(!existing.deviceId && req.deviceId) existing.deviceId = req.deviceId;
+          if(!existing.receiptNumber && req.receiptNumber) existing.receiptNumber = req.receiptNumber;
+          if(!existing.customerName && req.customerName) existing.customerName = req.customerName;
+          if(!existing.partDescription && req.partDescription) existing.partDescription = req.partDescription;
+          continue;
+        }
+
+        const slip = {
+          id: uid('ps'),
+          requestId: req.id || null,
+          salesInvoiceNumber: req.salesInvoiceNumber || '',
+          salesInvoiceAmount: req.salesInvoiceAmount || 0,
+          deviceId: req.deviceId || '',
+          receiptNumber: req.receiptNumber || '',
+          customerName: req.customerName || '',
+          partDescription: req.partDescription || '',
+          notes: req.notes || '',
+          status: 'pending',
+          preparedBy: req.companyHandledBy || 'موظف الشركة',
+          createdAt: req.updatedAt || req.createdAt || nowISO(),
+          updatedAt: nowISO(),
+          usedInCompletionId: null,
+          returnReason: '',
+          returnRequestedBy: null,
+          returnHandledBy: null,
+          returnHandledAt: null
+        };
+        db.partSlips.unshift(slip);
+        created.push(slip);
+      }
+
+      if(created.length){
+        saveDB(true);
+        if(APP_CONFIG.dataProvider === 'supabase'){
+          created.forEach(slip => {
+            Promise.resolve(upsertSinglePartSlip(slip)).catch(err => console.error('auto backfill part slip failed:', err));
+          });
+        }
+      }
+      return created;
+    }
+
     function getDevicePartSlips(deviceId){
-      return db.partSlips.filter(p => p.deviceId === deviceId);
+      ensurePreparedSupplyRequestsHavePartSlips(deviceId);
+      return (db.partSlips || []).filter(p => String(p.deviceId || '') === String(deviceId || ''));
     }
 
     function getPendingDevicePartSlips(deviceId){
