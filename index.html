@@ -4113,9 +4113,17 @@ const deviceStatusMap = {
         title === 'الأجهزة المكتملة اليوم' ||
         title === 'الأجهزة المكتملة في التاريخ المحدد';
 
+      const showProfitColumn =
+        currentUser &&
+        currentUser.role === 'manager' &&
+        title === 'الأجهزة المسلمة في التاريخ المحدد';
+
       const rows = items.map(d => {
         const usedSlipNumbers = showUsedSlipNumbersColumn ? getDeviceSupplyInvoiceNumbers(d.id) : [];
         const usedSlipNumbersText = usedSlipNumbers.length ? usedSlipNumbers.join(' - ') : 'بدون فواتير';
+        const repairAmount = Number(d.repairAmount || 0);
+        const partsCost = getDevicePartsCost(d.id);
+        const deviceProfit = repairAmount - partsCost;
 
         return `
           <tr>
@@ -4126,6 +4134,7 @@ const deviceStatusMap = {
             <td>${escapeHtml(d.phone || '—')}</td>
             <td>${badge(deviceStatusMap, d.status)}</td>
             <td>${formatDateTime(d.deliveredAt || d.createdAt || d.completedAt || d.updatedAt)}</td>
+            ${showProfitColumn ? `<td>${formatCurrency(deviceProfit)}</td>` : ''}
             <td><button type="button" class="small info" onclick="openDeviceFromDashboard('${d.id}')">فتح</button></td>
           </tr>
         `;
@@ -4148,6 +4157,7 @@ const deviceStatusMap = {
                   <th>الهاتف</th>
                   <th>الحالة</th>
                   <th>الوقت</th>
+                  ${showProfitColumn ? '<th>ربح الجهاز</th>' : ''}
                   <th>فتح</th>
                 </tr>
               </thead>
