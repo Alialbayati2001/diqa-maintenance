@@ -5975,8 +5975,8 @@ window.addEventListener('load', function(){
       return {
         id: String(r.id || ''),
         deviceId: r.deviceId || r.device_id || '',
-        salesInvoiceNumber: r.salesInvoiceNumber || r.requestNumber || '—',
-        salesInvoiceAmount: Number(r.salesInvoiceAmount || 0),
+        salesInvoiceNumber: r.salesInvoiceNumber || r.requestNumber || r.request_number || '—',
+        salesInvoiceAmount: Number(r.salesInvoiceAmount ?? r.sales_invoice_amount ?? 0),
         receiptNumber: r.receiptNumber || r.receipt_number_snapshot || '—',
         customerName: r.customerName || r.customer_name_snapshot || '—',
         partDescription: r.partDescription || r.requested_part || '—',
