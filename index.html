@@ -6746,6 +6746,41 @@ window.addEventListener('load', function(){
       `).join('');
     }
 
+    function onCompletionFinalAmountChange(){
+      const amountInput = document.getElementById('completionFinalAmount');
+      const reasonWrap = document.getElementById('completionNotRepairReasonWrap');
+      const reasonInput = document.getElementById('completionNotRepairReason');
+      const amount = Number(amountInput?.value || 0);
+      const shouldShow = amount === 0;
+      if(reasonWrap) reasonWrap.classList.toggle('hidden', !shouldShow);
+      if(reasonInput){
+        reasonInput.required = shouldShow;
+        if(!shouldShow) reasonInput.value = '';
+      }
+    }
+
+    function getCompletionNotRepairReason(completion){
+      if(!completion) return '';
+      if(String(completion.notRepairReason || '').trim()) return String(completion.notRepairReason || '').trim();
+      const device = (db.devices || []).find(d => d.id === completion.deviceId);
+      if(device && String(device.notRepairReason || '').trim() && Number(completion.finalRepairAmount || 0) === 0){
+        return String(device.notRepairReason || '').trim();
+      }
+      return '';
+    }
+
+    function buildCompletionNotesCell(completion){
+      const note = String(completion?.notes || '').trim();
+      const reason = getCompletionNotRepairReason(completion);
+      if(note && reason){
+        return `${escapeHtml(note)}<div class="hint" style="margin-top:6px"><strong>سبب عدم التصليح:</strong> ${escapeHtml(reason)}</div>`;
+      }
+      if(reason){
+        return `<span class="muted">—</span><div class="hint" style="margin-top:6px"><strong>سبب عدم التصليح:</strong> ${escapeHtml(reason)}</div>`;
+      }
+      return escapeHtml(note || '—');
+    }
+
     function onCompletionDeviceChange(){
       const deviceId = document.getElementById('completionDeviceId')?.value || '';
       renderCompletionPartChoices(deviceId);
@@ -6766,7 +6801,7 @@ window.addEventListener('load', function(){
           <td>${escapeHtml(c.deviceType || '—')}</td>
           <td>${escapeHtml((c.partDescriptions || []).join('، ') || c.partDescription || '—')}</td>
           <td>${escapeHtml(c.technicianName || '—')}</td>
-          <td>${escapeHtml(c.notes || '—')}</td>
+          <td>${buildCompletionNotesCell(c)}</td>
           <td>${Number(c.finalRepairAmount || 0).toLocaleString('ar-IQ')}</td>
           <td>${formatDateTime(c.completedAt)}</td>
           <td><button type="button" class="small" onclick="sendCompletionWhatsapp('${'${escapeHtml(c.deviceId)}'}')">واتساب</button></td>
@@ -6793,11 +6828,15 @@ window.addEventListener('load', function(){
           </div>
           <div>
             <label>مبلغ الصيانة النهائي</label>
-            <input id="completionFinalAmount" type="number" min="0" step="0.01" required />
+            <input id="completionFinalAmount" type="number" min="0" step="0.01" required oninput="onCompletionFinalAmountChange()" onchange="onCompletionFinalAmountChange()" />
           </div>
           <div>
             <label>ملاحظات الفني</label>
             <input id="completionNotes" />
+          </div>
+          <div id="completionNotRepairReasonWrap" class="hidden">
+            <label>سبب عدم التصليح</label>
+            <input id="completionNotRepairReason" placeholder="اكتب سبب عدم التصليح إذا كان مبلغ الصيانة النهائي 0" />
           </div>
           <div style="grid-column:1/-1" id="completionDeviceSummary"></div>
           <div style="grid-column:1/-1">
@@ -6832,6 +6871,7 @@ window.addEventListener('load', function(){
           </table>
         </div>
       `;
+      onCompletionFinalAmountChange();
     }
 
     function normalizeWhatsappNumber(phone=''){
@@ -6875,7 +6915,6 @@ window.addEventListener('load', function(){
 
     async function createCompletion(e){
       e.preventDefault();
-      const shouldOpenWhatsapp = window.confirm('بعد اعتماد الإتمام، هل تريد فتح واتساب لإرسال رسالة للزبون؟ يمكنك أيضاً الإرسال لاحقاً من زر واتساب.');
       const deviceId = document.getElementById('completionDeviceId').value;
       const device = db.devices.find(d => d.id === deviceId);
       if(!device){ alert('اختر جهازاً صحيحاً'); return; }
@@ -6894,9 +6933,19 @@ window.addEventListener('load', function(){
         return;
       }
 
+      const finalAmount = Number(document.getElementById('completionFinalAmount').value || 0);
+      const notRepairReason = String(document.getElementById('completionNotRepairReason')?.value || '').trim();
+      if(finalAmount === 0 && !notRepairReason){
+        alert('اكتب سبب عدم التصليح عندما يكون مبلغ الصيانة النهائي 0');
+        document.getElementById('completionNotRepairReason')?.focus();
+        return;
+      }
+
+      const shouldOpenWhatsapp = window.confirm('بعد اعتماد الإتمام، هل تريد فتح واتساب لإرسال رسالة للزبون؟ يمكنك أيضاً الإرسال لاحقاً من زر واتساب.');
       const selectedParts = pendingParts.filter(p => selectedIds.includes(p.id));
       const completionId = uid('cmp');
-      const finalAmount = Number(document.getElementById('completionFinalAmount').value || 0);
+      const completionAt = nowISO();
+      const technicianNotes = document.getElementById('completionNotes').value.trim();
       db.completions.unshift({
         id: completionId,
         deviceId: device.id,
@@ -6908,8 +6957,9 @@ window.addEventListener('load', function(){
         partDescriptions: selectedParts.map(p => p.partDescription || '—'),
         technicianName: document.getElementById('completionTechnicianName').value.trim(),
         finalRepairAmount: finalAmount,
-        notes: document.getElementById('completionNotes').value.trim(),
-        completedAt: nowISO()
+        notes: technicianNotes,
+        notRepairReason: finalAmount === 0 ? notRepairReason : '',
+        completedAt: completionAt
       });
 
       selectedParts.forEach(part => {
@@ -6918,17 +6968,21 @@ window.addEventListener('load', function(){
         part.updatedAt = nowISO();
       });
 
-      await updateDeviceStatus(device.id, 'complete', {
+      const nextStatus = finalAmount === 0 ? 'not_repaired' : 'complete';
+      await updateDeviceStatus(device.id, nextStatus, {
         repairAmount: finalAmount,
-        completedAt: nowISO()
+        completedAt: completionAt,
+        notRepairedAt: finalAmount === 0 ? completionAt : null,
+        notRepairReason: finalAmount === 0 ? notRepairReason : ''
       });
       saveDB();
       buildNav();
-      alert('تم اعتماد إتمام الجهاز بنجاح');
+      alert(finalAmount === 0 ? 'تم اعتماد الجهاز كجهاز لم يتم تصليحه بنجاح' : 'تم اعتماد إتمام الجهاز بنجاح');
       if(shouldOpenWhatsapp){
         setTimeout(() => sendCompletionWhatsapp(device.id), 50);
       }
       e.target.reset();
+      onCompletionFinalAmountChange();
       renderAll();
       buildNav();
       openSection('completion');
