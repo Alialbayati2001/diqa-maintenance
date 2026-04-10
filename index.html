@@ -3380,6 +3380,7 @@ const deviceStatusMap = {
     }
 
     async function openSection(section){
+      const previousSection = currentSection;
       currentSection = section;
       closeMobileNav();
       if(APP_CONFIG.dataProvider === 'supabase') {
@@ -3406,7 +3407,9 @@ const deviceStatusMap = {
       if(navBtn) navBtn.classList.add('active');
       renderAll();
       refreshMobileUX();
-      window.scrollTo({top:0, behavior:'smooth'});
+      if(previousSection !== section){
+        window.scrollTo({top:0, behavior:'smooth'});
+      }
     }
 
     let __uiDraftState = null;
