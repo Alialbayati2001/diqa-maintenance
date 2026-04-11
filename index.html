@@ -3929,15 +3929,24 @@ const deviceStatusMap = {
         return;
       }
 
-      const ok = confirm(`هل تريد حذف الفاتورة رقم ${req.salesInvoiceNumber || '—'} فقط؟ لن يتم حذف الجهاز.`);
+      const linkedPartSlipIds = (db.partSlips || [])
+        .filter(x => String(x.requestId || '').trim() === String(requestId).trim())
+        .map(x => x.id);
+
+      const ok = confirm(`هل تريد حذف الفاتورة رقم ${req.salesInvoiceNumber || '—'} فقط؟ لن يتم حذف الجهاز، وسيتم حذف الوصولات المعلقة المرتبطة بهذه الفاتورة أيضاً.`);
       if(!ok) return;
 
       try{
         if(APP_CONFIG.dataProvider === 'supabase'){
+          if(linkedPartSlipIds.length){
+            const { error: partSlipsDeleteError } = await supabaseClient.from(APP_CONFIG.partSlipsTable).delete().in('id', linkedPartSlipIds);
+            if(partSlipsDeleteError) throw partSlipsDeleteError;
+          }
           const { error } = await supabaseClient.from(APP_CONFIG.supplyRequestsTable).delete().eq('id', requestId);
           if(error) throw error;
         }
 
+        db.partSlips = (db.partSlips || []).filter(x => String(x.requestId || '').trim() !== String(requestId).trim());
         db.supplyRequests = (db.supplyRequests || []).filter(x => x.id !== requestId);
 
         const sameDeviceHasMore = (db.supplyRequests || []).some(x => x.deviceId === req.deviceId);
@@ -3954,8 +3963,12 @@ const deviceStatusMap = {
         }
         saveDB(true);
         renderAll();
-        openSection('shopReceive');
-        showToast('تم حذف الفاتورة المرتبطة بالجهاز فقط', 'info', 2400, 'نجاح');
+        if(currentSection === 'technician'){
+          openSection('technician');
+        }else{
+          openSection('shopReceive');
+        }
+        showToast('تم حذف الفاتورة والوصولات المرتبطة بها فقط بدون حذف الجهاز', 'info', 2600, 'نجاح');
       }catch(err){
         console.error('deleteLinkedSupplyRequest failed:', err);
         alert('تعذر حذف الفاتورة');
@@ -4238,6 +4251,7 @@ const deviceStatusMap = {
           <td>${escapeHtml(p.receiptNumber || '—')}</td>
           <td>${escapeHtml(p.customerName || '—')}</td>
           <td>${escapeHtml(p.partDescription || '—')}</td>
+          <td>${escapeHtml(p.salesInvoiceNumber || '—')}</td>
           <td>${escapeHtml(p.preparedBy || '—')}</td>
           <td>${badge(partStatusMap, p.status)}</td>
           <td>${formatDateTime(p.createdAt || p.updatedAt)}</td>
@@ -4257,6 +4271,7 @@ const deviceStatusMap = {
                   <th>رقم الوصل</th>
                   <th>الزبون</th>
                   <th>الوصل / القطعة</th>
+                  <th>رقم الفاتورة</th>
                   <th>الفني</th>
                   <th>الحالة</th>
                   <th>الوقت</th>
@@ -6558,17 +6573,19 @@ window.addEventListener('load', function(){
       const pendingParts = db.partSlips.filter(p => ['pending','rejected_return'].includes(p.status));
       const rows = pendingParts.map(p => `
         <tr>
-          <td>${escapeHtml(p.salesInvoiceNumber || '—')}</td>
-          <td>${escapeHtml(p.receiptNumber)}</td>
-          <td>${escapeHtml(p.customerName)}</td>
-          <td>${escapeHtml(p.partDescription || '—')}</td>
-          <td>${badge(partStatusMap, p.status)}</td>
-          <td>${escapeHtml(p.preparedBy || '—')}</td>
-          <td>${formatDateTime(p.createdAt)}</td>
-          <td>
+          <td data-label="رقم الفاتورة">${escapeHtml(p.salesInvoiceNumber || '—')}</td>
+          <td data-label="مرجع الاستلام">${escapeHtml(p.receiptNumber)}</td>
+          <td data-label="الزبون">${escapeHtml(p.customerName)}</td>
+          <td data-label="القطعة">${escapeHtml(p.partDescription || '—')}</td>
+          <td data-label="الحالة">${badge(partStatusMap, p.status)}</td>
+          <td data-label="مجهز بواسطة">${escapeHtml(p.preparedBy || '—')}</td>
+          <td data-label="الوقت">${formatDateTime(p.createdAt)}</td>
+          <td data-label="إجراء">
+            <div class="hint" style="margin-bottom:6px">رقم الفاتورة: ${escapeHtml(p.salesInvoiceNumber || '—')}</div>
             <div class="actions">
               <button class="small info" onclick="prefillCompletion('${p.id}')">فتح إتمام الجهاز</button>
               ${p.status === 'pending' ? `<button class="small warning" onclick="requestReturn('${p.id}')">طلب إرجاع</button>` : ''}
+              ${(currentUser && currentUser.role === 'manager' && p.requestId) ? `<button class="small danger" onclick="deleteLinkedSupplyRequest('${p.requestId}')">حذف الفاتورة</button>` : ''}
             </div>
           </td>
         </tr>
@@ -6611,7 +6628,7 @@ window.addEventListener('load', function(){
             <p>الفواتير التي تم تجهيزها من الشركة وتنتظر الاستخدام</p>
           </div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap responsive-cards">
           <table>
             <thead>
               <tr>
