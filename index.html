@@ -4246,6 +4246,8 @@ const deviceStatusMap = {
         `;
       }
 
+      const canDeleteInvoices = !!(currentUser && currentUser.role === 'manager');
+
       const rows = items.map(p => `
         <tr>
           <td>${escapeHtml(p.receiptNumber || '—')}</td>
@@ -4255,6 +4257,7 @@ const deviceStatusMap = {
           <td>${escapeHtml(p.preparedBy || '—')}</td>
           <td>${badge(partStatusMap, p.status)}</td>
           <td>${formatDateTime(p.createdAt || p.updatedAt)}</td>
+          ${canDeleteInvoices ? `<td><div class="actions">${p.requestId ? `<button type="button" class="small danger" onclick="deleteLinkedSupplyRequest('${p.requestId}')">حذف الفاتورة</button>` : `<span class="muted">—</span>`}</div></td>` : ``}
         </tr>
       `).join('');
 
@@ -4275,6 +4278,7 @@ const deviceStatusMap = {
                   <th>الفني</th>
                   <th>الحالة</th>
                   <th>الوقت</th>
+                  ${canDeleteInvoices ? `<th>إجراء</th>` : ``}
                 </tr>
               </thead>
               <tbody>${rows}</tbody>
