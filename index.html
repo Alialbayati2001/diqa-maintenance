@@ -3983,10 +3983,12 @@ const deviceStatusMap = {
 
     function getOverdueDevicesList(){
       const now = new Date();
-      return db.devices.filter(d => {
-        if(!d.createdAt) return false;
-        const ageDays = (now - new Date(d.createdAt)) / (1000 * 60 * 60 * 24);
-        return ageDays >= 3 && !['complete', 'delivered', 'not_repaired'].includes(d.status);
+      return (db.devices || []).filter(d => {
+        if(d.status !== 'received') return false;
+        const baseDate = d.receivedAt || d.createdAt;
+        if(!baseDate) return false;
+        const ageDays = (now - new Date(baseDate)) / (1000 * 60 * 60 * 24);
+        return ageDays > 2;
       });
     }
 
@@ -5220,8 +5222,9 @@ function renderDevices(){
     let __deviceRowsRenderToken = 0;
 
     function buildDeviceRowHtml(d){
-      const ageDays = d.createdAt ? ((new Date() - new Date(d.createdAt)) / (1000 * 60 * 60 * 24)) : 0;
-      const isOverdue = ageDays >= 3 && !['complete','delivered','not_repaired'].includes(d.status);
+      const baseDate = d.receivedAt || d.createdAt;
+      const ageDays = baseDate ? ((new Date() - new Date(baseDate)) / (1000 * 60 * 60 * 24)) : 0;
+      const isOverdue = d.status === 'received' && ageDays > 2;
       return `
         <tr id="device_row_${d.id}" class="${highlightedDeviceId === d.id ? 'scan-hit' : ''}" style="${isOverdue ? 'background: rgba(239,68,68,.12);' : ''}">
           <td>${escapeHtml(d.receiptNumber)}</td>
@@ -5716,8 +5719,9 @@ window.addEventListener('load', function(){
       const now = new Date();
 
       const results = db.devices.filter(d => {
-        const ageDays = d.createdAt ? ((now - new Date(d.createdAt)) / (1000 * 60 * 60 * 24)) : 0;
-        const isOverdue = ageDays >= 3 && !['complete','delivered','not_repaired'].includes(d.status);
+        const baseDate = d.receivedAt || d.createdAt;
+        const ageDays = baseDate ? ((now - new Date(baseDate)) / (1000 * 60 * 60 * 24)) : 0;
+        const isOverdue = d.status === 'received' && ageDays > 2;
 
         let typeMatch = true;
         switch(deviceFilters.type){
