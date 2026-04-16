@@ -1828,8 +1828,25 @@ const APP_CONFIG = {
     let savingPromise = null;
     let pendingSave = false;
     let deviceFilters = { search:'', type:'all' };
-    let devicePagination = { page:1, perPage:25 };
+    let devicePagination = { page:1, perPage:5 };
+    let deviceSearchDebounceTimer = null;
+    let deviceSearchSelection = { start:null, end:null, shouldRestore:false };
     let companyPagination = { page:1, perPage:10, search:'' };
+    let companySearchDebounceTimer = null;
+    let companySearchSelection = { start:null, end:null, shouldRestore:false };
+    let supplyRequestsFilters = { search:'' };
+    let supplyRequestsPagination = { page:1, perPage:5 };
+    let supplyRequestsSearchDebounceTimer = null;
+    let supplyRequestsSearchSelection = { start:null, end:null, shouldRestore:false };
+    let technicianPagination = { page:1, perPage:5, search:'' };
+    let technicianSearchDebounceTimer = null;
+    let technicianSearchSelection = { start:null, end:null, shouldRestore:false };
+    let completionPagination = { page:1, perPage:5, search:'' };
+    let completionSearchDebounceTimer = null;
+    let completionSearchSelection = { start:null, end:null, shouldRestore:false };
+    let deliveryPagination = { page:1, perPage:5, search:'' };
+    let deliverySearchDebounceTimer = null;
+    let deliverySearchSelection = { start:null, end:null, shouldRestore:false };
     let scannerStream = null;
     let scannerInterval = null;
     let scannerDetector = null;
@@ -5163,13 +5180,13 @@ function renderDevices(){
         <div class="section-title">
           <div>
             <h2>قائمة الأجهزة</h2>
-            <p>كل وصولات الاستلام والحالات الحالية، ويمكن للمدير فتح تعديل أي جهاز من هنا بما فيها الأجهزة التي تم تسليمها مع فواتيرها المستخدمة</p>
+            <p>تظهر آخر 5 أجهزة أولاً حسب الأحدث، ثم يمكنك التنقل بين الصفحات، والبحث الآن يبقى نشطاً بدون فقدان التركيز أثناء الكتابة</p>
           </div>
         </div>
 
         <div class="toolbar" style="margin-bottom:12px">
-          <input id="deviceSearchInput" class="search" type="text" placeholder="ابحث باسم الزبون أو رقم الهاتف أو رقم الوصل أو نوع الجهاز" value="${escapeHtml(deviceFilters.search || '')}" oninput="setDeviceSearch(this.value)" onkeydown="if(event.key==='Enter'){ event.preventDefault(); setDeviceSearch(this.value); }" />
-          <button type="button" onclick="setDeviceSearch(document.getElementById('deviceSearchInput')?.value || '')">بحث</button>
+          <input id="deviceSearchInput" class="search" type="text" placeholder="ابحث باسم الزبون أو رقم الهاتف أو رقم الوصل أو نوع الجهاز" value="${escapeHtml(deviceFilters.search || '')}" oninput="handleDeviceSearchInput(event)" onkeydown="if(event.key==='Enter'){ event.preventDefault(); commitDeviceSearch(this.value, event); }" />
+          <button type="button" onclick="commitDeviceSearch(document.getElementById('deviceSearchInput')?.value || '')">بحث</button>
           <button type="button" class="secondary" onclick="openSummaryFromSearch()">فتح الجهاز</button>
           <select id="deviceStatusFilter" onchange="setDeviceFilter(this.value)" style="max-width:240px">
             <option value="all" ${deviceFilters.type === 'all' ? 'selected' : ''}>كل الحالات</option>
@@ -5190,7 +5207,9 @@ function renderDevices(){
 
         ${quickResult}
 
-        <div class="hint" style="margin-bottom:10px">عدد النتائج: ${filteredDevices.length}</div>
+        <div class="hint" style="margin-bottom:10px">عدد النتائج: ${filteredDevices.length} — يعرض النظام 5 أجهزة في كل صفحة بدءاً من الأحدث</div>
+
+        ${renderDevicePaginationControls(paginationMeta)}
 
         <div class="table-wrap">
           <table>
@@ -5214,9 +5233,12 @@ function renderDevices(){
             <tbody id="deviceRowsTbody">${rowsPlaceholder}</tbody>
           </table>
         </div>
+
+        ${renderDevicePaginationControls(paginationMeta)}
       `;
       renderDevicesRowsProgressive(pagedDevices);
       renderDeviceBarcodes(pagedDevices);
+      renderDeviceSearchInputState();
     }
 
     let __deviceRowsRenderToken = 0;
@@ -5571,7 +5593,7 @@ window.addEventListener('load', function(){
     }
 
     function getDevicePageItems(items){
-      const perPage = Math.max(1, Number(devicePagination.perPage || 25));
+      const perPage = Math.max(1, Number(devicePagination.perPage || 5));
       const totalItems = Array.isArray(items) ? items.length : 0;
       const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
       const currentPage = Math.min(Math.max(1, Number(devicePagination.page || 1)), totalPages);
@@ -5618,7 +5640,7 @@ window.addEventListener('load', function(){
       const filteredDevices = getFilteredDevices();
       const index = filteredDevices.findIndex(d => d.id === deviceId);
       if(index < 0) return;
-      const perPage = Math.max(1, Number(devicePagination.perPage || 25));
+      const perPage = Math.max(1, Number(devicePagination.perPage || 5));
       devicePagination.page = Math.floor(index / perPage) + 1;
       renderDevices();
       setTimeout(() => {
@@ -5627,11 +5649,53 @@ window.addEventListener('load', function(){
       }, 80);
     }
 
-    function setDeviceSearch(value){
+    function rememberDeviceSearchSelection(event){
+      const input = event && event.target ? event.target : document.getElementById('deviceSearchInput');
+      if(!input) return;
+      deviceSearchSelection = {
+        start: typeof input.selectionStart === 'number' ? input.selectionStart : null,
+        end: typeof input.selectionEnd === 'number' ? input.selectionEnd : null,
+        shouldRestore: true
+      };
+    }
+
+    function renderDeviceSearchInputState(){
+      const input = document.getElementById('deviceSearchInput');
+      if(!input) return;
+      if(document.activeElement === input) return;
+      if(deviceSearchSelection.shouldRestore){
+        requestAnimationFrame(() => {
+          const freshInput = document.getElementById('deviceSearchInput');
+          if(!freshInput) return;
+          freshInput.focus({ preventScroll:true });
+          const start = typeof deviceSearchSelection.start === 'number' ? deviceSearchSelection.start : freshInput.value.length;
+          const end = typeof deviceSearchSelection.end === 'number' ? deviceSearchSelection.end : start;
+          try{
+            freshInput.setSelectionRange(start, end);
+          }catch(e){}
+        });
+      }
+    }
+
+    function commitDeviceSearch(value, event){
+      if(event) rememberDeviceSearchSelection(event);
       deviceFilters.search = String(value || '');
       highlightedDeviceId = null;
       resetDevicePagination();
       renderDevices();
+    }
+
+    function handleDeviceSearchInput(event){
+      rememberDeviceSearchSelection(event);
+      const value = event && event.target ? event.target.value : '';
+      clearTimeout(deviceSearchDebounceTimer);
+      deviceSearchDebounceTimer = setTimeout(() => {
+        commitDeviceSearch(value);
+      }, 180);
+    }
+
+    function setDeviceSearch(value){
+      commitDeviceSearch(value);
     }
 
     function setDeviceFilter(type){
@@ -5744,6 +5808,12 @@ window.addEventListener('load', function(){
 
       if(q){
         results.sort((a, b) => getDeviceSearchScore(a, q) - getDeviceSearchScore(b, q));
+      }else{
+        results.sort((a, b) => {
+          const aDate = new Date(a.receivedAt || a.createdAt || 0).getTime();
+          const bDate = new Date(b.receivedAt || b.createdAt || 0).getTime();
+          return bDate - aDate;
+        });
       }
 
       return results;
@@ -5802,7 +5872,13 @@ window.addEventListener('load', function(){
       const options = availableDevices.map(d => `
         <option value="${escapeHtml(d.id)}">${escapeHtml(d.receiptNumber)} — ${escapeHtml(d.customerName)} — ${escapeHtml(d.deviceType)}</option>
       `).join('');
-      const rows = db.supplyRequests.map(r => `
+      const supplyRequestsSearchQuery = getSupplyRequestsSearchQuery();
+      const filteredSupplyRequests = (Array.isArray(db.supplyRequests) ? db.supplyRequests : [])
+        .slice()
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+        .filter(r => !supplyRequestsSearchQuery || getSupplyRequestSearchText(r).includes(supplyRequestsSearchQuery.toLowerCase()));
+      const supplyRequestsMeta = getSupplyRequestsPageMeta(filteredSupplyRequests);
+      const rows = (supplyRequestsMeta.items || []).map(r => `
         <tr>
           <td data-label="رقم الفاتورة">${escapeHtml(r.salesInvoiceNumber || '—')}</td>
           <td data-label="مبلغ الفاتورة">${formatCurrency(r.salesInvoiceAmount || 0)}</td>
@@ -5857,6 +5933,14 @@ window.addEventListener('load', function(){
           <div style="grid-column:1/-1"><button type="submit">إرسال إلى الشركة</button></div>
         </form>
         <div style="height:16px"></div>
+        <div class="card" style="padding:12px; margin-bottom:12px;">
+          <div class="toolbar">
+            <input id="supplyRequestsSearchInput" class="search" type="text" placeholder="ابحث برقم الفاتورة أو الوصل أو الزبون أو القطعة" value="${escapeHtml(supplyRequestsSearchQuery)}" oninput="handleSupplyRequestsSearchInput(event)" onkeydown="if(event.key==='Enter'){ event.preventDefault(); commitSupplyRequestsSearch(this.value, event); }" />
+            <button type="button" onclick="commitSupplyRequestsSearch(document.getElementById('supplyRequestsSearchInput')?.value || '')">بحث</button>
+            <div class="hint">عدد النتائج: ${filteredSupplyRequests.length} — يعرض النظام 5 طلبات في كل صفحة بدءاً من الأحدث</div>
+          </div>
+        </div>
+        ${renderSupplyRequestsPaginationControls(supplyRequestsMeta)}
         <div class="table-wrap responsive-cards">
           <table>
             <thead>
@@ -5876,6 +5960,7 @@ window.addEventListener('load', function(){
             <tbody>${rows || `<tr><td colspan="9" class="muted">لا توجد طلبات تجهيز</td></tr>`}</tbody>
           </table>
         </div>
+        ${renderSupplyRequestsPaginationControls(supplyRequestsMeta)}
         ${currentUser && currentUser.role === 'manager' ? `
           <div class="card panel" style="margin-top:16px">
             <div class="section-title">
@@ -5931,6 +6016,7 @@ window.addEventListener('load', function(){
         ` : ''}
 
       `;
+      renderSupplyRequestsSearchInputState();
     }
 
     async function createSupplyRequest(e){
@@ -6244,6 +6330,155 @@ window.addEventListener('load', function(){
     }
 
 
+    function rememberCompanySearchSelection(event){
+      const input = event && event.target ? event.target : document.getElementById('companyRequestSearch');
+      if(!input) return;
+      companySearchSelection = {
+        start: typeof input.selectionStart === 'number' ? input.selectionStart : null,
+        end: typeof input.selectionEnd === 'number' ? input.selectionEnd : null,
+        shouldRestore: true
+      };
+    }
+
+    function renderCompanySearchInputState(){
+      const input = document.getElementById('companyRequestSearch');
+      if(!input) return;
+      if(document.activeElement === input) return;
+      if(companySearchSelection.shouldRestore){
+        requestAnimationFrame(() => {
+          const freshInput = document.getElementById('companyRequestSearch');
+          if(!freshInput) return;
+          freshInput.focus({ preventScroll:true });
+          const start = typeof companySearchSelection.start === 'number' ? companySearchSelection.start : freshInput.value.length;
+          const end = typeof companySearchSelection.end === 'number' ? companySearchSelection.end : start;
+          try{ freshInput.setSelectionRange(start, end); }catch(e){}
+        });
+      }
+    }
+
+    function commitCompanySearch(value, event){
+      if(event) rememberCompanySearchSelection(event);
+      companyPagination.search = String(value || '').trim();
+      companyPagination.page = 1;
+      renderCompany();
+    }
+
+    function handleCompanySearchInput(event){
+      rememberCompanySearchSelection(event);
+      const value = event && event.target ? event.target.value : '';
+      clearTimeout(companySearchDebounceTimer);
+      companySearchDebounceTimer = setTimeout(() => {
+        commitCompanySearch(value);
+      }, 180);
+    }
+
+    function resetSupplyRequestsPagination(){
+      supplyRequestsPagination.page = 1;
+    }
+
+    function getSupplyRequestsSearchQuery(){
+      return String(supplyRequestsFilters.search || '').trim();
+    }
+
+    function rememberSupplyRequestsSearchSelection(event){
+      const input = event && event.target ? event.target : document.getElementById('supplyRequestsSearchInput');
+      if(!input) return;
+      supplyRequestsSearchSelection = {
+        start: typeof input.selectionStart === 'number' ? input.selectionStart : null,
+        end: typeof input.selectionEnd === 'number' ? input.selectionEnd : null,
+        shouldRestore: true
+      };
+    }
+
+    function renderSupplyRequestsSearchInputState(){
+      const input = document.getElementById('supplyRequestsSearchInput');
+      if(!input) return;
+      if(document.activeElement === input) return;
+      if(supplyRequestsSearchSelection.shouldRestore){
+        requestAnimationFrame(() => {
+          const freshInput = document.getElementById('supplyRequestsSearchInput');
+          if(!freshInput) return;
+          freshInput.focus({ preventScroll:true });
+          const start = typeof supplyRequestsSearchSelection.start === 'number' ? supplyRequestsSearchSelection.start : freshInput.value.length;
+          const end = typeof supplyRequestsSearchSelection.end === 'number' ? supplyRequestsSearchSelection.end : start;
+          try{ freshInput.setSelectionRange(start, end); }catch(e){}
+        });
+      }
+    }
+
+    function getSupplyRequestSearchText(r){
+      return [
+        r.salesInvoiceNumber,
+        r.salesInvoiceAmount,
+        r.receiptNumber,
+        r.customerName,
+        r.partDescription,
+        r.notes,
+        r.sentBy,
+        r.status,
+        getLatestTechnicianNoteForDevice(r.deviceId)
+      ].map(v => String(v || '').toLowerCase()).join(' ');
+    }
+
+    function getSupplyRequestsPageMeta(items){
+      const perPage = Math.max(1, Number(supplyRequestsPagination.perPage || 5));
+      const totalItems = Array.isArray(items) ? items.length : 0;
+      const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+      const currentPage = Math.min(Math.max(1, Number(supplyRequestsPagination.page || 1)), totalPages);
+      supplyRequestsPagination.page = currentPage;
+      const startIndex = (currentPage - 1) * perPage;
+      const endIndex = startIndex + perPage;
+      return {
+        items: (items || []).slice(startIndex, endIndex),
+        totalItems,
+        totalPages,
+        currentPage,
+        startIndex,
+        endIndex: Math.min(endIndex, totalItems),
+        perPage
+      };
+    }
+
+    function renderSupplyRequestsPaginationControls(meta){
+      if(!meta || meta.totalPages <= 1) return '';
+      return `
+        <div class="card" style="padding:12px; margin-top:12px;">
+          <div class="toolbar" style="margin-bottom:8px; align-items:center">
+            <div class="hint">الصفحة ${meta.currentPage} من ${meta.totalPages} — عرض ${meta.totalItems ? (meta.startIndex + 1) : 0} إلى ${meta.endIndex} من أصل ${meta.totalItems}</div>
+          </div>
+          <div class="actions">
+            <button type="button" class="small secondary" ${meta.currentPage <= 1 ? 'disabled' : ''} onclick="setSupplyRequestsPage(1)">الأولى</button>
+            <button type="button" class="small secondary" ${meta.currentPage <= 1 ? 'disabled' : ''} onclick="setSupplyRequestsPage(${meta.currentPage - 1})">السابق</button>
+            <button type="button" class="small secondary" ${meta.currentPage >= meta.totalPages ? 'disabled' : ''} onclick="setSupplyRequestsPage(${meta.currentPage + 1})">التالي</button>
+            <button type="button" class="small secondary" ${meta.currentPage >= meta.totalPages ? 'disabled' : ''} onclick="setSupplyRequestsPage(${meta.totalPages})">الأخيرة</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function setSupplyRequestsPage(page){
+      supplyRequestsPagination.page = Math.max(1, Number(page || 1));
+      renderSupplyRequests();
+      const section = document.getElementById('supplyRequestsSection');
+      if(section) section.scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+
+    function commitSupplyRequestsSearch(value, event){
+      if(event) rememberSupplyRequestsSearchSelection(event);
+      supplyRequestsFilters.search = String(value || '').trim();
+      resetSupplyRequestsPagination();
+      renderSupplyRequests();
+    }
+
+    function handleSupplyRequestsSearchInput(event){
+      rememberSupplyRequestsSearchSelection(event);
+      const value = event && event.target ? event.target.value : '';
+      clearTimeout(supplyRequestsSearchDebounceTimer);
+      supplyRequestsSearchDebounceTimer = setTimeout(() => {
+        commitSupplyRequestsSearch(value);
+      }, 180);
+    }
+
     function resetCompanyPagination(){
       companyPagination.page = 1;
     }
@@ -6253,9 +6488,7 @@ window.addEventListener('load', function(){
     }
 
     function setCompanySearch(value){
-      companyPagination.search = String(value || '').trim();
-      companyPagination.page = 1;
-      renderCompany();
+      commitCompanySearch(value);
     }
 
     function setCompanyPage(page){
@@ -6472,7 +6705,7 @@ window.addEventListener('load', function(){
         </div>
         <div class="card" style="padding:12px; margin-bottom:12px;">
           <div class="toolbar">
-            <input id="companyRequestSearch" class="search" value="${escapeHtml(searchQuery)}" placeholder="ابحث برقم الفاتورة أو الوصل أو اسم الزبون" oninput="setCompanySearch(this.value)" />
+            <input id="companyRequestSearch" class="search" value="${escapeHtml(searchQuery)}" placeholder="ابحث برقم الفاتورة أو الوصل أو اسم الزبون" oninput="handleCompanySearchInput(event)" onkeydown="if(event.key==='Enter'){ event.preventDefault(); commitCompanySearch(this.value, event); }" />
             <div class="hint">غير مجهز: ${companyMeta.pendingCount} | مجهز: ${companyMeta.preparedCount}</div>
           </div>
         </div>
@@ -6576,10 +6809,202 @@ window.addEventListener('load', function(){
       `;
     }
 
+
+    function buildSimplePageMeta(items, paginationState, defaultPerPage = 5){
+      const perPage = Math.max(1, Number((paginationState && paginationState.perPage) || defaultPerPage));
+      const totalItems = Array.isArray(items) ? items.length : 0;
+      const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+      const currentPage = Math.min(Math.max(1, Number((paginationState && paginationState.page) || 1)), totalPages);
+      if(paginationState) paginationState.page = currentPage;
+      const startIndex = (currentPage - 1) * perPage;
+      const endIndex = startIndex + perPage;
+      return {
+        items: (items || []).slice(startIndex, endIndex),
+        totalItems,
+        totalPages,
+        currentPage,
+        startIndex,
+        endIndex: Math.min(endIndex, totalItems),
+        perPage
+      };
+    }
+
+    function renderSimplePaginationControls(meta, setPageFnName, sectionLabel){
+      if(!meta || meta.totalPages <= 1) return '';
+      return `
+        <div class="card" style="padding:12px; margin-top:12px;">
+          <div class="toolbar" style="margin-bottom:8px; align-items:center">
+            <div class="hint">${escapeHtml(sectionLabel || 'القائمة')} — الصفحة ${meta.currentPage} من ${meta.totalPages} — عرض ${meta.totalItems ? (meta.startIndex + 1) : 0} إلى ${meta.endIndex} من أصل ${meta.totalItems}</div>
+          </div>
+          <div class="actions">
+            <button type="button" class="small secondary" ${meta.currentPage <= 1 ? 'disabled' : ''} onclick="${setPageFnName}(1)">الأولى</button>
+            <button type="button" class="small secondary" ${meta.currentPage <= 1 ? 'disabled' : ''} onclick="${setPageFnName}(${meta.currentPage - 1})">السابق</button>
+            <button type="button" class="small secondary" ${meta.currentPage >= meta.totalPages ? 'disabled' : ''} onclick="${setPageFnName}(${meta.currentPage + 1})">التالي</button>
+            <button type="button" class="small secondary" ${meta.currentPage >= meta.totalPages ? 'disabled' : ''} onclick="${setPageFnName}(${meta.totalPages})">الأخيرة</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function rememberSearchSelectionState(inputId, store, event){
+      const input = event && event.target ? event.target : document.getElementById(inputId);
+      if(!input) return;
+      store.start = typeof input.selectionStart === 'number' ? input.selectionStart : null;
+      store.end = typeof input.selectionEnd === 'number' ? input.selectionEnd : null;
+      store.shouldRestore = true;
+    }
+
+    function restoreSearchSelectionState(inputId, store){
+      const input = document.getElementById(inputId);
+      if(!input) return;
+      if(document.activeElement === input) return;
+      if(store && store.shouldRestore){
+        requestAnimationFrame(() => {
+          const freshInput = document.getElementById(inputId);
+          if(!freshInput) return;
+          freshInput.focus({ preventScroll:true });
+          const start = typeof store.start === 'number' ? store.start : freshInput.value.length;
+          const end = typeof store.end === 'number' ? store.end : start;
+          try{ freshInput.setSelectionRange(start, end); }catch(e){}
+        });
+      }
+    }
+
+    function getTechnicianSearchQuery(){
+      return String(technicianPagination.search || '').trim().toLowerCase();
+    }
+
+    function getTechnicianSlipSearchText(p){
+      return [
+        p.salesInvoiceNumber,
+        p.receiptNumber,
+        p.customerName,
+        p.partDescription,
+        p.status,
+        p.preparedBy,
+        p.notes
+      ].map(v => String(v || '').toLowerCase()).join(' ');
+    }
+
+    function commitTechnicianSearch(value, event){
+      if(event) rememberSearchSelectionState('technicianSearchInput', technicianSearchSelection, event);
+      technicianPagination.search = String(value || '').trim();
+      technicianPagination.page = 1;
+      renderTechnician();
+    }
+
+    function handleTechnicianSearchInput(event){
+      rememberSearchSelectionState('technicianSearchInput', technicianSearchSelection, event);
+      const value = event && event.target ? event.target.value : '';
+      clearTimeout(technicianSearchDebounceTimer);
+      technicianSearchDebounceTimer = setTimeout(() => commitTechnicianSearch(value), 180);
+    }
+
+    function renderTechnicianSearchInputState(){
+      restoreSearchSelectionState('technicianSearchInput', technicianSearchSelection);
+    }
+
+    function setTechnicianPage(page){
+      technicianPagination.page = Math.max(1, Number(page || 1));
+      renderTechnician();
+      const section = document.getElementById('technicianSection');
+      if(section) section.scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+
+    function getCompletionSearchQuery(){
+      return String(completionPagination.search || '').trim().toLowerCase();
+    }
+
+    function getCompletionSearchText(c){
+      return [
+        c.receiptNumber,
+        c.customerName,
+        c.deviceType,
+        (c.partDescriptions || []).join(' '),
+        c.partDescription,
+        c.technicianName,
+        c.notes,
+        c.notRepairReason,
+        c.finalRepairAmount
+      ].map(v => String(v || '').toLowerCase()).join(' ');
+    }
+
+    function commitCompletionSearch(value, event){
+      if(event) rememberSearchSelectionState('completionSearchInput', completionSearchSelection, event);
+      completionPagination.search = String(value || '').trim();
+      completionPagination.page = 1;
+      renderCompletion();
+    }
+
+    function handleCompletionSearchInput(event){
+      rememberSearchSelectionState('completionSearchInput', completionSearchSelection, event);
+      const value = event && event.target ? event.target.value : '';
+      clearTimeout(completionSearchDebounceTimer);
+      completionSearchDebounceTimer = setTimeout(() => commitCompletionSearch(value), 180);
+    }
+
+    function renderCompletionSearchInputState(){
+      restoreSearchSelectionState('completionSearchInput', completionSearchSelection);
+    }
+
+    function setCompletionPage(page){
+      completionPagination.page = Math.max(1, Number(page || 1));
+      renderCompletion();
+      const section = document.getElementById('completionSection');
+      if(section) section.scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+
+    function getDeliverySearchQuery(){
+      return String(deliveryPagination.search || '').trim().toLowerCase();
+    }
+
+    function getDeliverySearchText(d){
+      return [
+        d.receiptNumber,
+        d.customerName,
+        d.deviceType,
+        d.repairAmount,
+        d.status,
+        d.deliveredBy,
+        d.notRepairReason
+      ].map(v => String(v || '').toLowerCase()).join(' ');
+    }
+
+    function commitDeliverySearch(value, event){
+      if(event) rememberSearchSelectionState('deliverySearchInput', deliverySearchSelection, event);
+      deliveryPagination.search = String(value || '').trim();
+      deliveryPagination.page = 1;
+      renderDelivery();
+    }
+
+    function handleDeliverySearchInput(event){
+      rememberSearchSelectionState('deliverySearchInput', deliverySearchSelection, event);
+      const value = event && event.target ? event.target.value : '';
+      clearTimeout(deliverySearchDebounceTimer);
+      deliverySearchDebounceTimer = setTimeout(() => commitDeliverySearch(value), 180);
+    }
+
+    function renderDeliverySearchInputState(){
+      restoreSearchSelectionState('deliverySearchInput', deliverySearchSelection);
+    }
+
+    function setDeliveryPage(page){
+      deliveryPagination.page = Math.max(1, Number(page || 1));
+      renderDelivery();
+      const section = document.getElementById('deliverySection');
+      if(section) section.scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+
     function renderTechnician(){
       const mobileChips = buildMobileSectionChips();
-      const pendingParts = db.partSlips.filter(p => ['pending','rejected_return'].includes(p.status));
-      const rows = pendingParts.map(p => `
+      const technicianSearchQuery = getTechnicianSearchQuery();
+      const pendingParts = db.partSlips
+        .filter(p => ['pending','rejected_return'].includes(p.status))
+        .slice()
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+        .filter(p => !technicianSearchQuery || getTechnicianSlipSearchText(p).includes(technicianSearchQuery));
+      const technicianMeta = buildSimplePageMeta(pendingParts, technicianPagination, 5);
+      const rows = (technicianMeta.items || []).map(p => `
         <tr>
           <td data-label="رقم الفاتورة">${escapeHtml(p.salesInvoiceNumber || '—')}</td>
           <td data-label="مرجع الاستلام">${escapeHtml(p.receiptNumber)}</td>
@@ -6636,6 +7061,10 @@ window.addEventListener('load', function(){
             <p>الفواتير التي تم تجهيزها من الشركة وتنتظر الاستخدام</p>
           </div>
         </div>
+        <div class="toolbar" style="margin-bottom:10px">
+          <input id="technicianSearchInput" class="search" type="text" placeholder="بحث برقم الفاتورة أو الوصل أو اسم الزبون أو القطعة" value="${escapeHtml(technicianPagination.search || '')}" oninput="handleTechnicianSearchInput(event)" onfocus="rememberSearchSelectionState('technicianSearchInput', technicianSearchSelection, event)" onclick="rememberSearchSelectionState('technicianSearchInput', technicianSearchSelection, event)" />
+        </div>
+        <div class="hint" style="margin-bottom:10px">عدد الوصولات الظاهرة: ${technicianMeta.totalItems}</div>
         <div class="table-wrap responsive-cards">
           <table>
             <thead>
@@ -6653,6 +7082,7 @@ window.addEventListener('load', function(){
             <tbody>${rows || `<tr><td colspan="8" class="muted">لا توجد وصولات معلقة</td></tr>`}</tbody>
           </table>
         </div>
+        ${renderSimplePaginationControls(technicianMeta, 'setTechnicianPage', 'وصولات فني الصيانة')}
 
         <div class="section-title" style="margin-top:18px">
           <div>
@@ -6699,6 +7129,7 @@ window.addEventListener('load', function(){
           </table>
         </div>
       `;
+      renderTechnicianSearchInputState();
     }
 
     function ensurePreparedSupplyRequestsHavePartSlips(deviceId = null){
@@ -6882,7 +7313,13 @@ window.addEventListener('load', function(){
         const pendingLabel = pendingCount ? `${pendingCount} وصلة` : 'بدون وصولات';
         return `<option value="${escapeHtml(d.id)}">${escapeHtml(d.receiptNumber)} — ${escapeHtml(d.customerName)} — ${escapeHtml(d.deviceType)} (${pendingLabel})</option>`;
       }).join('');
-      const rows = db.completions.map(c => `
+      const completionSearchQuery = getCompletionSearchQuery();
+      const completionItems = (db.completions || [])
+        .slice()
+        .sort((a, b) => new Date(b.completedAt || b.createdAt || 0) - new Date(a.completedAt || a.createdAt || 0))
+        .filter(c => !completionSearchQuery || getCompletionSearchText(c).includes(completionSearchQuery));
+      const completionMeta = buildSimplePageMeta(completionItems, completionPagination, 5);
+      const rows = (completionMeta.items || []).map(c => `
         <tr>
           <td>${escapeHtml(c.receiptNumber)}</td>
           <td>${escapeHtml(c.customerName)}</td>
@@ -6940,6 +7377,10 @@ window.addEventListener('load', function(){
           </div>
         </form>
         <div style="height:16px"></div>
+        <div class="toolbar" style="margin-bottom:10px">
+          <input id="completionSearchInput" class="search" type="text" placeholder="بحث برقم الوصل أو الزبون أو الجهاز أو الفني" value="${escapeHtml(completionPagination.search || '')}" oninput="handleCompletionSearchInput(event)" onfocus="rememberSearchSelectionState('completionSearchInput', completionSearchSelection, event)" onclick="rememberSearchSelectionState('completionSearchInput', completionSearchSelection, event)" />
+        </div>
+        <div class="hint" style="margin-bottom:10px">عدد عمليات الإتمام الظاهرة: ${completionMeta.totalItems}</div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -6958,8 +7399,10 @@ window.addEventListener('load', function(){
             <tbody>${rows || `<tr><td colspan="9" class="muted">لا توجد عمليات إتمام</td></tr>`}</tbody>
           </table>
         </div>
+        ${renderSimplePaginationControls(completionMeta, 'setCompletionPage', 'عمليات الإتمام')}
       `;
       onCompletionFinalAmountChange();
+      renderCompletionSearchInputState();
     }
 
     function normalizeWhatsappNumber(phone=''){
@@ -7349,9 +7792,14 @@ window.addEventListener('load', function(){
 
     function renderDelivery(){
       const mobileChips = buildMobileSectionChips();
-      const rows = db.devices
+      const deliverySearchQuery = getDeliverySearchQuery();
+      const deliveryItems = db.devices
         .filter(d => ['complete','not_repaired','delivered_company','delivered_customer','delivered'].includes(d.status))
-        .map(d => {
+        .slice()
+        .sort((a, b) => new Date(b.deliveredAt || b.updatedAt || b.createdAt || 0) - new Date(a.deliveredAt || a.updatedAt || a.createdAt || 0))
+        .filter(d => !deliverySearchQuery || getDeliverySearchText(d).includes(deliverySearchQuery));
+      const deliveryMeta = buildSimplePageMeta(deliveryItems, deliveryPagination, 5);
+      const rows = (deliveryMeta.items || []).map(d => {
           const canChooseDeliveryWay = ['complete','not_repaired'].includes(d.status);
           const noteText = d.status === 'not_repaired' ? (d.notRepairReason || 'لم يتم التصليح') : '—';
           return `
@@ -7395,6 +7843,10 @@ window.addEventListener('load', function(){
             <p>يمكن اختيار تسليم إلى الزبون أو إلى الشركة / الدلفري، ويمكن تعديل جهة التسليم لاحقاً عند الخطأ</p>
           </div>
         </div>
+        <div class="toolbar" style="margin-bottom:10px">
+          <input id="deliverySearchInput" class="search" type="text" placeholder="بحث برقم الوصل أو الزبون أو الجهاز أو حالة التسليم" value="${escapeHtml(deliveryPagination.search || '')}" oninput="handleDeliverySearchInput(event)" onfocus="rememberSearchSelectionState('deliverySearchInput', deliverySearchSelection, event)" onclick="rememberSearchSelectionState('deliverySearchInput', deliverySearchSelection, event)" />
+        </div>
+        <div class="hint" style="margin-bottom:10px">عدد الأجهزة الظاهرة: ${deliveryMeta.totalItems}</div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -7412,7 +7864,9 @@ window.addEventListener('load', function(){
             <tbody>${rows || `<tr><td colspan="8" class="muted">لا توجد أجهزة جاهزة أو غير مُصلحة للتسليم</td></tr>`}</tbody>
           </table>
         </div>
+        ${renderSimplePaginationControls(deliveryMeta, 'setDeliveryPage', 'أجهزة التسليم')}
       `;
+      renderDeliverySearchInputState();
     }
 
     function seedDemoData(){
