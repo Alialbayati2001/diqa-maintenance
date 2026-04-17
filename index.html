@@ -4692,6 +4692,134 @@ const deviceStatusMap = {
       }
     }
 
+    function splitDeviceTypeParts(deviceType=''){
+      const normalized = normalizeBrandInput(deviceType || '');
+      const parts = String(normalized || '').trim().split(/\s+/).filter(Boolean);
+      if(!parts.length) return { brand:'', model:'' };
+      const brand = normalizeBrandName(parts[0] || '');
+      const brandIsKnown = DEVICE_BRANDS.some(b => String(b).toLowerCase() === String(brand || '').toLowerCase());
+      if(!brandIsKnown){
+        return { brand:'', model:String(normalized || '').trim() };
+      }
+      return {
+        brand,
+        model: parts.slice(1).join(' ').trim()
+      };
+    }
+
+    function getDeviceBrandOnlySuggestions(currentValue=''){
+      const query = String(currentValue || '').trim().toLowerCase();
+      const knownBrands = [...DEVICE_BRANDS, ...Object.values(DEVICE_BRAND_ALIASES || {})]
+        .filter(Boolean)
+        .map(name => normalizeBrandName(name))
+        .filter(Boolean);
+      const fromDevices = (db.devices || [])
+        .map(d => splitDeviceTypeParts(d?.deviceType || '').brand)
+        .filter(Boolean);
+      const seen = new Set();
+      return [...knownBrands, ...fromDevices]
+        .filter(name => {
+          const normalized = String(name || '').trim();
+          if(!normalized) return false;
+          const key = normalized.toLowerCase();
+          if(seen.has(key)) return false;
+          seen.add(key);
+          return !query || key.startsWith(query) || key.includes(query);
+        })
+        .slice(0, 25);
+    }
+
+    function getDeviceModelOnlySuggestions(brand='', model=''){
+      const normalizedBrand = normalizeBrandName(brand || '');
+      if(!normalizedBrand) return [];
+      const typedModel = String(model || '').trim();
+      const catalog = getCatalogModelsByBrand(normalizedBrand, typedModel).map(name => {
+        const prefix = normalizedBrand + ' ';
+        return String(name || '').toLowerCase().startsWith(prefix.toLowerCase()) ? String(name).slice(prefix.length).trim() : String(name).trim();
+      });
+      const known = getKnownDeviceModelsByBrand(normalizedBrand).map(name => {
+        const prefix = normalizedBrand + ' ';
+        return String(name || '').toLowerCase().startsWith(prefix.toLowerCase()) ? String(name).slice(prefix.length).trim() : String(name).trim();
+      });
+      const alias = typedModel ? getAliasModelSuggestions(typedModel)
+        .filter(name => normalizeBrandName(String(name).split(/\s+/)[0]) === normalizedBrand)
+        .map(name => String(name).split(/\s+/).slice(1).join(' ').trim()) : [];
+      const seen = new Set();
+      return [...catalog, ...alias, ...known]
+        .filter(Boolean)
+        .filter(name => {
+          const key = String(name).toLowerCase();
+          if(seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, typedModel ? 30 : 18);
+    }
+
+    function syncDeviceTypeCompositeField(){
+      const brandInput = document.getElementById('deviceBrand');
+      const modelInput = document.getElementById('deviceModel');
+      const hiddenInput = document.getElementById('deviceType');
+      if(!hiddenInput) return;
+      const brand = normalizeBrandName(brandInput?.value || '');
+      if(brandInput && brand) brandInput.value = brand;
+      const rawModel = String(modelInput?.value || '').trim();
+      const normalizedModel = normalizeBrandInput(rawModel).replace(new RegExp('^' + brand + '\\s+', 'i'), '').trim();
+      if(modelInput && normalizedModel !== rawModel) modelInput.value = normalizedModel;
+      hiddenInput.value = [brand, normalizedModel].filter(Boolean).join(' ').trim();
+    }
+
+    function refreshCompositeDeviceTypeLists(){
+      const brandList = document.getElementById('deviceBrandOnlyList');
+      const modelList = document.getElementById('deviceModelOnlyList');
+      const brandInput = document.getElementById('deviceBrand');
+      const modelInput = document.getElementById('deviceModel');
+      if(brandList){
+        brandList.innerHTML = getDeviceBrandOnlySuggestions(brandInput?.value || '')
+          .map(name => `<option value="${escapeHtml(name)}"></option>`)
+          .join('');
+      }
+      if(modelList){
+        const brand = normalizeBrandName(brandInput?.value || '');
+        modelList.innerHTML = getDeviceModelOnlySuggestions(brand, modelInput?.value || '')
+          .map(name => `<option value="${escapeHtml(name)}"></option>`)
+          .join('');
+      }
+    }
+
+    function handleDeviceBrandFieldInput(input){
+      if(!input) return;
+      const clean = normalizeBrandName(String(input.value || '').trim());
+      input.value = clean;
+      const modelInput = document.getElementById('deviceModel');
+      if(modelInput){
+        const hiddenInput = document.getElementById('deviceType');
+        const currentFull = String(hiddenInput?.value || '').trim();
+        const currentParts = splitDeviceTypeParts(currentFull);
+        if(!String(modelInput.value || '').trim() && currentParts.brand && currentParts.brand.toLowerCase() === clean.toLowerCase()){
+          modelInput.value = currentParts.model || '';
+        }
+      }
+      syncDeviceTypeCompositeField();
+      refreshCompositeDeviceTypeLists();
+      refreshDeviceBrandList();
+    }
+
+    function handleDeviceModelFieldInput(input){
+      if(!input) return;
+      const brand = normalizeBrandName(document.getElementById('deviceBrand')?.value || '');
+      const raw = String(input.value || '').trim();
+      let normalized = normalizeBrandInput(raw);
+      if(brand){
+        const prefixRegex = new RegExp('^' + brand + '\\s+', 'i');
+        normalized = normalized.replace(prefixRegex, '').trim();
+      }
+      input.value = normalized;
+      syncDeviceTypeCompositeField();
+      refreshCompositeDeviceTypeLists();
+      refreshDeviceBrandList();
+    }
+
     function handleDeviceTypeInput(input){
       if(!input) return;
       const val = String(input.value || '');
@@ -4713,6 +4841,7 @@ const deviceStatusMap = {
         const ownerInput = ownerId ? document.getElementById(ownerId) : null;
         dl.innerHTML = deviceBrandSuggestions(ownerInput?.value || '');
       });
+      refreshCompositeDeviceTypeLists();
     }
 
 function renderShopReceive(){
@@ -4751,6 +4880,7 @@ function renderShopReceive(){
       }).join('');
       const isEditing = !!editingReceiptId;
       const editTarget = isEditing ? db.devices.find(x => x.id === editingReceiptId) : null;
+      const editDeviceTypeParts = splitDeviceTypeParts(editTarget?.deviceType || '');
       const linkedRequests = editTarget ? getDeviceLinkedSupplyRequests(editTarget.id) : [];
       const linkedRequestsEditorHtml = isEditing && currentUser && currentUser.role === 'manager' ? `
         <div style="height:16px"></div>
@@ -4819,7 +4949,20 @@ function renderShopReceive(){
         <form class="grid grid-2" onsubmit="createDevice(event)">
           <div><label>اسم الزبون</label><input id="customerName" value="${escapeHtml(editTarget?.customerName || '')}" required /></div>
           <div><label>رقم الهاتف</label><input id="phone" value="${escapeHtml(editTarget?.phone || '')}" required /></div>
-          <div><label>نوع الجهاز</label><input id="deviceType" value="${escapeHtml(editTarget?.deviceType || '')}" list="deviceBrandList" placeholder="مثال: iphone 11 أو redmi note 13 أو mi a3 أو ipad 10" oninput="handleDeviceTypeInput(this)" required /><datalist id="deviceBrandList" data-owner-id="deviceType"></datalist><div class="hint">اقتراحات ذكية موسعة: iPhone و Xiaomi/Redmi/Mi وكذلك الأجهزة اللوحية مثل iPad 10 و Samsung Tab A8 X200 و Blackview Tab 16 Pro و Redmi Pad SE و Infinix X Pad و Honor Pad X8</div></div>
+          <div>
+            <label>اسم الشركة</label>
+            <input id="deviceBrand" value="${escapeHtml(editDeviceTypeParts.brand || '')}" list="deviceBrandOnlyList" placeholder="مثال: HONOR" oninput="handleDeviceBrandFieldInput(this)" required />
+            <datalist id="deviceBrandOnlyList"></datalist>
+            <div class="hint">ابدأ باسم الشركة أولاً، وستظهر لك اقتراحات مثل HONOR و Samsung و iPhone و Xiaomi</div>
+          </div>
+          <div>
+            <label>موديل الجهاز</label>
+            <input id="deviceModel" value="${escapeHtml(editDeviceTypeParts.model || '')}" list="deviceModelOnlyList" placeholder="مثال: X9D" oninput="handleDeviceModelFieldInput(this)" required />
+            <datalist id="deviceModelOnlyList"></datalist>
+            <input id="deviceType" type="hidden" value="${escapeHtml(editTarget?.deviceType || '')}" />
+            <datalist id="deviceBrandList" data-owner-id="deviceType"></datalist>
+            <div class="hint">يجب كتابة الشركة أولاً ثم الموديل. سيحفظ النظام الاسم الكامل تلقائياً مثل: HONOR X9D</div>
+          </div>
           <div><label>لون الجهاز</label><input id="deviceColor" value="${escapeHtml(editTarget?.deviceColor || '')}" placeholder="مثال: أسود / أبيض / أزرق" required /></div>
           <div><label>اسم الموظف المستلم</label><input id="receivedBy" value="${escapeHtml(editTarget?.receivedBy || '')}" placeholder="يكتب الموظف اسمه هنا" autocomplete="off" /></div>
           <div style="grid-column:1/-1"><label>العطل</label><textarea id="faultDescription" required>${escapeHtml(editTarget?.faultDescription || '')}</textarea></div>
@@ -4887,10 +5030,15 @@ function renderShopReceive(){
       const timeInput = document.getElementById('receiveTime');
       if(dateInput && !dateInput.value) dateInput.value = `${y}-${m}-${d}`;
       if(timeInput && !timeInput.value) timeInput.value = `${hh}:${mm}`;
-      ['customerName','phone','deviceType','faultDescription'].forEach(id => {
+      ['customerName','phone','deviceType','faultDescription','deviceBrand','deviceModel'].forEach(id => {
         const el = document.getElementById(id);
-        if(el) el.addEventListener('input', renderRepeatedFaultNotice);
+        if(el) el.addEventListener('input', () => {
+          if(id === 'deviceBrand' || id === 'deviceModel') syncDeviceTypeCompositeField();
+          renderRepeatedFaultNotice();
+        });
       });
+      syncDeviceTypeCompositeField();
+      refreshCompositeDeviceTypeLists();
     }
 
     function getNextReceiptInfo(){
@@ -4917,6 +5065,9 @@ function renderShopReceive(){
       if(submitBtn) submitBtn.disabled = true;
       const customerName = document.getElementById('customerName').value.trim();
       const phone = document.getElementById('phone').value.trim();
+      const deviceBrand = normalizeBrandName(document.getElementById('deviceBrand')?.value.trim() || '');
+      const deviceModel = normalizeBrandInput(document.getElementById('deviceModel')?.value.trim() || '').replace(new RegExp('^' + deviceBrand + '\\s+', 'i'), '').trim();
+      document.getElementById('deviceType').value = [deviceBrand, deviceModel].filter(Boolean).join(' ').trim();
       const deviceType = normalizeBrandInput(document.getElementById('deviceType').value.trim());
       const deviceColor = document.getElementById('deviceColor').value.trim();
       const faultDescription = document.getElementById('faultDescription').value.trim();
@@ -4930,6 +5081,8 @@ function renderShopReceive(){
       const requiredChecks = [
         ['اسم الزبون', customerName],
         ['رقم الهاتف', phone],
+        ['اسم الشركة', deviceBrand],
+        ['موديل الجهاز', deviceModel],
         ['نوع الجهاز', deviceType],
         ['لون الجهاز', deviceColor],
         ['العطل', faultDescription],
@@ -4942,6 +5095,14 @@ function renderShopReceive(){
       const missingField = requiredChecks.find(([, value]) => String(value).trim() === '');
       if(missingField){
         alert(`يرجى ملء حقل: ${missingField[0]}`);
+        return;
+      }
+      if(!DEVICE_BRANDS.some(b => String(b).toLowerCase() === String(deviceBrand || '').toLowerCase())){
+        alert('يرجى اختيار أو كتابة اسم شركة معروف أولاً مثل HONOR أو Samsung');
+        return;
+      }
+      if(!deviceModel){
+        alert('يرجى كتابة موديل الجهاز بعد اسم الشركة');
         return;
       }
       if(Number.isNaN(repairAmount) || repairAmount < 0){
