@@ -7885,7 +7885,7 @@ window.addEventListener('load', function(){
           <div style="grid-column:1/-1">
             <label>الوصولات التي ستدخل ضمن إتمام هذا الجهاز</label>
             <div id="completionPartsBox" class="summary-grid"><div class="hint">اختر جهازاً أولاً</div></div>
-            <div class="hint" style="margin-top:8px">إذا كانت هناك وصولات معلقة فيجب تحديدها كلها قبل الإتمام. أما إذا لم توجد أي وصلة لهذا الجهاز فيمكن إتمامه مباشرة.</div>
+            <div class="hint" style="margin-top:8px">إذا تركت أي وصلة بدون تحديد فسيظهر لك تحذير قبل اعتماد الإتمام، والوصولات غير المحددة ستبقى ظاهرة في الوصولات المعلقة عند الفني.</div>
           </div>
           <div style="grid-column:1/-1">
             <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -7971,15 +7971,23 @@ window.addEventListener('load', function(){
       const pendingParts = getPendingDevicePartSlips(deviceId);
       const selectedIds = Array.from(document.querySelectorAll('.completion-part-checkbox:checked')).map(el => el.value);
 
-      if(pendingParts.length && !selectedIds.length){
-        alert('حدد الوصولات التي تم استخدامها لهذا الجهاز');
-        return;
-      }
-
       const remainingPending = pendingParts.filter(p => !selectedIds.includes(p.id));
-      if(remainingPending.length){
-        alert('لا يمكن إتمام الجهاز قبل معالجة كل الوصولات المعلقة الخاصة به. الوصولات غير المحددة: ' + remainingPending.map(p => p.partDescription || '—').join('، '));
-        return;
+      if(pendingParts.length && !selectedIds.length){
+        const ok = window.confirm(
+          'يوجد وصولات ما زالت لم تستخدمها لهذا الجهاز.\n\n' +
+          'إذا تابعت الآن بدون تحديد أي وصلة، فستبقى كلها ظاهرة في الوصولات المعلقة عند الفني.\n\n' +
+          'الوصولات غير المحددة: ' + remainingPending.map(p => p.partDescription || '—').join('، ') + '\n\n' +
+          'هل تريد المتابعة رغم ذلك؟'
+        );
+        if(!ok) return;
+      } else if(remainingPending.length){
+        const ok = window.confirm(
+          'يوجد وصولات ما زالت لم تستخدمها لهذا الجهاز.\n\n' +
+          'إذا تابعت الآن، فالوصولات غير المحددة ستبقى ظاهرة في الوصولات المعلقة عند الفني.\n\n' +
+          'الوصولات غير المحددة: ' + remainingPending.map(p => p.partDescription || '—').join('، ') + '\n\n' +
+          'هل تريد المتابعة؟'
+        );
+        if(!ok) return;
       }
 
       const finalAmount = Number(document.getElementById('completionFinalAmount').value || 0);
