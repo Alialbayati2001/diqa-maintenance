@@ -2835,7 +2835,7 @@ const APP_CONFIG = {
       if(nextStatus === 'complete' && !device.completedAt && !patch.completedAt){
         patch.completedAt = nowISO();
       }
-      if(nextStatus === 'delivered' && !device.deliveredAt && !patch.deliveredAt){
+      if(['delivered','delivered_customer','delivered_company'].includes(nextStatus) && !device.deliveredAt && !patch.deliveredAt){
         patch.deliveredAt = nowISO();
       }
       if(nextStatus === 'not_repaired' && !device.notRepairedAt && !patch.notRepairedAt){
@@ -4203,7 +4203,125 @@ const deviceStatusMap = {
     }
 
     function getPendingTechnicianSlips(){
-      return db.partSlips.filter(x => x.status === 'pending');
+      return (db.partSlips || []).filter(slip => {
+        if(!slip) return false;
+
+        const request = (db.supplyRequests || []).find(r => String(r.id || '') === String(slip.requestId || ''));
+
+        const isPreparedFromCompany = !!(request && request.status === 'prepared');
+        const isUsedByTechnician = slip.status === 'used' || !!slip.usedInCompletionId;
+        const isStillPendingForTechnician = ['pending','rejected_return'].includes(slip.status);
+
+        if(!isPreparedFromCompany) return false;
+        if(isUsedByTechnician) return false;
+        if(isStillPendingForTechnician) return true;
+
+        return false;
+      });
+    }
+
+    function fixLegacyPendingTechnicianSlips(){
+      if(!currentUser || currentUser.role !== 'manager'){
+        showToast('هذه العملية متاحة للمدير فقط.', 'warning', 2600, 'غير مسموح');
+        return;
+      }
+
+      const ok = confirm('سيتم تصحيح الوصولات القديمة بحيث تُعلَّم الوصولات كمستخدمة فقط إذا كانت مرتبطة بوصل إتمام فعلي. الوصولات غير المجهزة من الشركة لن تُحسب معلقة عند الفني. كما سيُعامل التسليم للزبون أو للشركة كحالة منتهية. متابعة؟');
+      if(!ok) return;
+
+      const completions = Array.isArray(db.completions) ? db.completions : [];
+      const partSlips = Array.isArray(db.partSlips) ? db.partSlips : [];
+      const usedSlipIds = new Set();
+      const completionIds = new Set();
+
+      completions.forEach(comp => {
+        if(!comp) return;
+        if(comp.id != null) completionIds.add(String(comp.id));
+
+        const linkedIds = [];
+        const rawIds = Array.isArray(comp.partSlipIds)
+          ? comp.partSlipIds
+          : Array.isArray(comp.usedPartSlipIds)
+            ? comp.usedPartSlipIds
+            : [];
+        rawIds.forEach(id => {
+          if(id == null || id === '') return;
+          linkedIds.push(String(id));
+        });
+
+        const rawObjects = Array.isArray(comp.usedPartSlips) ? comp.usedPartSlips : [];
+        rawObjects.forEach(item => {
+          if(item == null) return;
+          const id = typeof item === 'object'
+            ? (item.id ?? item.partSlipId ?? item.part_slip_id ?? item.slipId ?? '')
+            : item;
+          if(id == null || id === '') return;
+          linkedIds.push(String(id));
+        });
+
+        linkedIds.forEach(id => usedSlipIds.add(id));
+      });
+
+      let changed = 0;
+      let markedUsed = 0;
+      let resetPending = 0;
+
+      partSlips.forEach(slip => {
+        if(!slip || slip.id == null) return;
+        const slipId = String(slip.id);
+        const request = (db.supplyRequests || []).find(r => String(r.id || '') === String(slip.requestId || ''));
+        const isPreparedFromCompany = !!(request && request.status === 'prepared');
+        const hasCompletionUsage = usedSlipIds.has(slipId) || (slip.usedInCompletionId && completionIds.has(String(slip.usedInCompletionId)));
+
+        if(hasCompletionUsage){
+          if(slip.status !== 'used' || !slip.usedInCompletionId){
+            changed += 1;
+            if(slip.status !== 'used') markedUsed += 1;
+            slip.status = 'used';
+            if(!slip.usedInCompletionId){
+              const foundCompletion = completions.find(comp => {
+                const ids = new Set();
+                (Array.isArray(comp?.partSlipIds) ? comp.partSlipIds : []).forEach(id => ids.add(String(id)));
+                (Array.isArray(comp?.usedPartSlipIds) ? comp.usedPartSlipIds : []).forEach(id => ids.add(String(id)));
+                (Array.isArray(comp?.usedPartSlips) ? comp.usedPartSlips : []).forEach(item => {
+                  const id = typeof item === 'object'
+                    ? (item.id ?? item.partSlipId ?? item.part_slip_id ?? item.slipId ?? '')
+                    : item;
+                  if(id != null && id !== '') ids.add(String(id));
+                });
+                return ids.has(slipId);
+              });
+              if(foundCompletion?.id != null) slip.usedInCompletionId = foundCompletion.id;
+            }
+          }
+          return;
+        }
+
+        if(!isPreparedFromCompany){
+          if(slip.status === 'used' && !slip.usedInCompletionId){
+            slip.status = 'pending';
+            resetPending += 1;
+            changed += 1;
+          }
+          return;
+        }
+
+        if(slip.status === 'used' && !slip.usedInCompletionId){
+          slip.status = 'pending';
+          resetPending += 1;
+          changed += 1;
+        }
+      });
+
+      if(changed > 0){
+        saveDB();
+      }
+      renderCurrentSection();
+      renderDashboard();
+      showToast(`تم تصحيح الوصولات القديمة.
+المعدل: ${changed}
+تحولت إلى مستخدمة: ${markedUsed}
+أعيدت إلى معلقة: ${resetPending}`, changed ? 'info' : 'warning', 4200, changed ? 'اكتمل التصحيح' : 'لا توجد تغييرات');
     }
 
     function getAwaitingApprovalDevices(){
@@ -4503,7 +4621,7 @@ const deviceStatusMap = {
 
         const hours = Math.floor((now - time) / (1000 * 60 * 60));
 
-        if(!['complete', 'delivered', 'not_repaired'].includes(d.status) && hours >= 24){
+        if(!['complete', 'delivered', 'delivered_customer', 'delivered_company', 'not_repaired'].includes(d.status) && hours >= 24){
           alerts.push({
             type: 'late-device',
             sort: 2,
@@ -4620,7 +4738,7 @@ const deviceStatusMap = {
       const now = new Date();
       const totalDevices = db.devices.length;
       const pendingSupply = db.supplyRequests.filter(x => x.status === 'pending').length;
-      const pendingParts = db.partSlips.filter(x => x.status === 'pending').length;
+      const pendingParts = getPendingTechnicianSlips().length;
       const activeMissingPartsCount = getActiveMissingPartsEntries().length;
       const receivedToday = getSelectedDateReceivedDevices().length;
       const completedToday = getSelectedDateCompletedDevices().length;
@@ -4632,7 +4750,7 @@ const deviceStatusMap = {
       const overdueDevices = db.devices.filter(d => {
         if(!d.createdAt) return false;
         const ageDays = (now - new Date(d.createdAt)) / (1000 * 60 * 60 * 24);
-        return ageDays >= 3 && !['complete', 'delivered', 'not_repaired'].includes(d.status);
+        return ageDays >= 3 && !['complete', 'delivered', 'delivered_customer', 'delivered_company', 'not_repaired'].includes(d.status);
       }).length;
       const todayMaintenanceTotal = getSelectedDateMaintenanceTotal();
       const deliveredTodayDevicesPartsCost = getSelectedDateDeliveredDevicesPartsCost();
@@ -4664,6 +4782,19 @@ const deviceStatusMap = {
           </div>
           <div class="hint">التاريخ المختار: ${escapeHtml(selectedDateLabel)}</div>
         </div>
+        ${currentUser && currentUser.role === 'manager' ? `
+          <div class="quick-list" style="margin-top:12px">
+            <div class="close-row" style="flex-wrap:wrap">
+              <div>
+                <h3>تصحيح الوصولات القديمة</h3>
+                <div class="hint">يستخدم هذا الزر مرة واحدة لتصحيح الوصولات القديمة حسب وصل الإتمام الفعلي وتجهيز الشركة، مع اعتبار التسليم للزبون أو للشركة حالة منتهية.</div>
+              </div>
+              <div class="actions">
+                <button type="button" class="small warning" onclick="fixLegacyPendingTechnicianSlips()">تصحيح الوصولات القديمة</button>
+              </div>
+            </div>
+          </div>
+        ` : ''}
         ${renderSmartAlerts()}
         <div class="stats">
           <div class="stat"><div class="label">إجمالي الأجهزة</div><div class="value">${totalDevices}</div></div>
@@ -5286,8 +5417,8 @@ function renderShopReceive(){
         status,
         repairAmount,
         createdAt,
-        completedAt: status === 'complete' || status === 'delivered' ? nowISO() : null,
-        deliveredAt: status === 'delivered' ? nowISO() : null,
+        completedAt: ['complete','delivered','delivered_customer','delivered_company'].includes(status) ? nowISO() : null,
+        deliveredAt: ['delivered','delivered_customer','delivered_company'].includes(status) ? nowISO() : null,
         notRepairedAt: status === 'not_repaired' ? nowISO() : null,
         notRepairReason: status === 'not_repaired' ? (faultDescription || 'تمت إضافته كجهاز قديم غير مُصلح') : ''
       };
@@ -5371,7 +5502,7 @@ function renderDevices(){
       const pagedDevices = paginationMeta.items;
       const overdueCount = db.devices.filter(d => {
         const ageDays = d.createdAt ? ((new Date() - new Date(d.createdAt)) / (1000 * 60 * 60 * 24)) : 0;
-        return ageDays >= 3 && !['complete','delivered','not_repaired'].includes(d.status);
+        return ageDays >= 3 && !['complete','delivered','delivered_customer','delivered_company','not_repaired'].includes(d.status);
       }).length;
       const notRepairedCount = db.devices.filter(d => d.status === 'not_repaired').length;
       const completeCount = db.devices.filter(d => d.status === 'complete').length;
@@ -7377,8 +7508,7 @@ window.addEventListener('load', function(){
     function renderTechnician(){
       const mobileChips = buildMobileSectionChips();
       const technicianSearchQuery = getTechnicianSearchQuery();
-      const pendingParts = db.partSlips
-        .filter(p => ['pending','rejected_return'].includes(p.status))
+      const pendingParts = getPendingTechnicianSlips()
         .slice()
         .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
         .filter(p => !technicianSearchQuery || getTechnicianSlipSearchText(p).includes(technicianSearchQuery));
