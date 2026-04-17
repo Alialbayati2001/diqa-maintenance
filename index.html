@@ -1339,6 +1339,7 @@
         </div>
         <div class="actions">
           
+          <button class="small secondary" onclick="manualRefreshFromServer()">تحديث يدوي</button>
           <button class="gray small" onclick="exportData()">تصدير البيانات</button>
           <button class="danger small" onclick="logout()">تسجيل الخروج</button>
         </div>
@@ -2227,6 +2228,24 @@ const APP_CONFIG = {
         }
         return db.devices.find(d => String(d.barcodeValue || '').trim() === normalized) || null;
       },
+      async getById(deviceId){
+        if(!deviceId) return null;
+        try{
+          const { data, error } = await supabaseClient
+            .from(APP_CONFIG.devicesTable)
+            .select('*')
+            .eq('id', deviceId)
+            .maybeSingle();
+          if(error){
+            console.error('Device by id failed:', error);
+          }
+          const mapped = this.mapRow(data);
+          if(mapped) return mapped;
+        }catch(error){
+          console.error('Device by id failed:', error);
+        }
+        return db.devices.find(d => d.id === deviceId) || null;
+      },
       async getIds(){
         const { data, error } = await supabaseClient.from(APP_CONFIG.devicesTable).select('id');
         if(error){
@@ -2331,6 +2350,15 @@ const APP_CONFIG = {
             return [];
           }
           return (data || []).map(config.mapRow);
+        },
+        async getById(id){
+          if(!id) return null;
+          const { data, error } = await supabaseClient.from(config.table).select('*').eq('id', id).maybeSingle();
+          if(error){
+            console.error(config.table + ' getById failed:', error);
+            return null;
+          }
+          return data ? config.mapRow(data) : null;
         },
         async getIds(){
           const { data, error } = await supabaseClient.from(config.table).select('id');
@@ -2499,6 +2527,110 @@ const APP_CONFIG = {
     let appStateChannel = null;
     let arraysRealtimeChannel = null;
 
+    function upsertRecordInArray(list, item){
+      if(!Array.isArray(list)) return item ? [item] : [];
+      if(!item || !item.id) return list;
+      const index = list.findIndex(x => x && x.id === item.id);
+      if(index >= 0){
+        list[index] = item;
+      }else{
+        list.unshift(item);
+      }
+      return list;
+    }
+
+    function removeRecordFromArray(list, id){
+      if(!Array.isArray(list) || !id) return list;
+      const index = list.findIndex(x => x && x.id === id);
+      if(index >= 0) list.splice(index, 1);
+      return list;
+    }
+
+    function saveLocalSnapshot(){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+    }
+
+    function performRenderCurrentSection(){
+      buildNav();
+      switch(currentSection){
+        case 'dashboard': renderDashboard(); break;
+        case 'shopReceive': renderShopReceive(); break;
+        case 'devices': renderDevices(); break;
+        case 'supplyRequests': renderSupplyRequests(); break;
+        case 'company': renderCompany(); break;
+        case 'technician': renderTechnician(); break;
+        case 'completion': renderCompletion(); break;
+        case 'delivery': renderDelivery(); break;
+        case 'returns': renderReturns(); break;
+        default: renderDashboard(); break;
+      }
+      refreshMobileUX();
+      setTimeout(() => {
+        showSmartAlertsAsPopup();
+      }, 100);
+    }
+
+    function renderCurrentSection(opts = {}){
+      const force = !!opts.force;
+      const preserveState = opts.preserveState !== false;
+
+      if(!force && isUserBusyEditing()){
+        __renderPausedBecauseEditing = true;
+        __uiDraftState = captureUiDraftState();
+        return false;
+      }
+
+      const draft = preserveState ? (__uiDraftState || captureUiDraftState()) : null;
+      performRenderCurrentSection();
+      if(preserveState) restoreUiDraftState(draft);
+      __uiDraftState = null;
+      __renderPausedBecauseEditing = false;
+      return true;
+    }
+
+    function scheduleSmartRender(opts = {}){
+      clearTimeout(__smartRenderTimer);
+      __smartRenderTimer = setTimeout(() => {
+        if(opts.full) renderAll(opts);
+        else renderCurrentSection(opts);
+      }, Number(opts.delay ?? 80));
+    }
+
+    function handleSingleDeviceRealtimePayload(payload){
+      const eventType = payload && payload.eventType;
+      const newRow = payload && payload.new ? DevicesAPI.mapRow(payload.new) : null;
+      const oldId = payload && payload.old ? payload.old.id : null;
+
+      if(eventType === 'DELETE'){
+        removeRecordFromArray(db.devices, oldId);
+      }else if(newRow){
+        upsertRecordInArray(db.devices, normalizeDeviceRecord(newRow));
+        ensureBarcodeValues();
+      }
+
+      saveLocalSnapshot();
+      if(currentUser) scheduleSmartRender({ delay:80 });
+    }
+
+    async function applyRealtimeArrayPayload(api, targetKey, payload){
+      const eventType = payload && payload.eventType;
+      const newRow = payload && payload.new ? api.mapRow(payload.new) : null;
+      const oldId = payload && payload.old ? payload.old.id : null;
+
+      if(eventType === 'DELETE'){
+        removeRecordFromArray(db[targetKey], oldId);
+      }else if(newRow){
+        upsertRecordInArray(db[targetKey], newRow);
+      }else if(payload && payload.new && payload.new.id){
+        const fresh = await api.getById(payload.new.id);
+        if(fresh) upsertRecordInArray(db[targetKey], fresh);
+      }
+
+      ensurePreparedSupplyRequestsHavePartSlips();
+      saveLocalSnapshot();
+      if(currentUser) scheduleSmartRender({ delay:80 });
+    }
+
     function subscribeAdminDevicesRealtime(){
       if(adminDevicesChannel || APP_CONFIG.dataProvider !== 'supabase') return adminDevicesChannel;
       adminDevicesChannel = supabaseClient
@@ -2507,12 +2639,7 @@ const APP_CONFIG = {
           event: '*',
           schema: 'public',
           table: APP_CONFIG.devicesTable
-        }, async () => {
-          db.devices = await DevicesAPI.getAll();
-          ensureBarcodeValues();
-          saveDB(true);
-          if(currentUser) scheduleSmartRender({ delay:80 });
-        })
+        }, handleSingleDeviceRealtimePayload)
         .subscribe();
       return adminDevicesChannel;
     }
@@ -2558,27 +2685,11 @@ const APP_CONFIG = {
 
     function subscribeArrayTablesRealtime(){
       if(arraysRealtimeChannel || APP_CONFIG.dataProvider !== 'supabase') return arraysRealtimeChannel;
-      let refreshAllTimer = null;
-      const refreshAll = async () => {
-        clearTimeout(refreshAllTimer);
-        refreshAllTimer = setTimeout(async () => {
-          const [supplyRequests, partSlips, completions] = await Promise.all([
-            SupplyRequestsAPI.getAll(),
-            PartSlipsAPI.getAll(),
-            CompletionsAPI.getAll()
-          ]);
-          db.supplyRequests = supplyRequests;
-          db.partSlips = partSlips;
-          db.completions = completions;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-          if(currentUser) scheduleSmartRender({ delay:80 });
-        }, 120);
-      };
       arraysRealtimeChannel = supabaseClient
         .channel('repair-array-tables-live')
-        .on('postgres_changes', { event: '*', schema: 'public', table: APP_CONFIG.supplyRequestsTable }, refreshAll)
-        .on('postgres_changes', { event: '*', schema: 'public', table: APP_CONFIG.partSlipsTable }, refreshAll)
-        .on('postgres_changes', { event: '*', schema: 'public', table: APP_CONFIG.completionsTable }, refreshAll)
+        .on('postgres_changes', { event: '*', schema: 'public', table: APP_CONFIG.supplyRequestsTable }, payload => applyRealtimeArrayPayload(SupplyRequestsAPI, 'supplyRequests', payload))
+        .on('postgres_changes', { event: '*', schema: 'public', table: APP_CONFIG.partSlipsTable }, payload => applyRealtimeArrayPayload(PartSlipsAPI, 'partSlips', payload))
+        .on('postgres_changes', { event: '*', schema: 'public', table: APP_CONFIG.completionsTable }, payload => applyRealtimeArrayPayload(CompletionsAPI, 'completions', payload))
         .subscribe();
       return arraysRealtimeChannel;
     }
@@ -2611,6 +2722,24 @@ const APP_CONFIG = {
       if(publicRealtimeChannel){
         supabaseClient.removeChannel(publicRealtimeChannel);
         publicRealtimeChannel = null;
+      }
+    }
+
+    async function manualRefreshFromServer(){
+      if(APP_CONFIG.dataProvider !== 'supabase'){
+        renderCurrentSection({ force:true });
+        return;
+      }
+      try{
+        await Promise.all([
+          refreshDevicesFromSupabase(),
+          refreshArrayTablesFromSupabase()
+        ]);
+        renderCurrentSection({ force:true });
+        showToast('تم التحديث اليدوي من السيرفر', 'info', 2200, 'نجاح');
+      }catch(error){
+        console.error('manualRefreshFromServer failed:', error);
+        alert('تعذر التحديث اليدوي من السيرفر');
       }
     }
 
@@ -2724,14 +2853,14 @@ const APP_CONFIG = {
 
     async function setDeviceStatus(deviceId, status){
       await updateDeviceStatus(deviceId, status);
-      renderAll();
+      renderCurrentSection();
     }
 
     async function setDeviceDelivered(deviceId){
       await updateDeviceStatus(deviceId, 'delivered', {
         deliveredBy: currentUser ? currentUser.fullName : '—'
       });
-      renderAll();
+      renderCurrentSection();
     }
 
     async function markDeviceNotRepaired(deviceId){
@@ -2740,7 +2869,7 @@ const APP_CONFIG = {
       await updateDeviceStatus(deviceId, 'not_repaired', {
         notRepairReason: String(reason || '').trim()
       });
-      renderAll();
+      renderCurrentSection();
     }
 
     function renderPublicDevice(device){
@@ -3428,12 +3557,6 @@ const deviceStatusMap = {
       const previousSection = currentSection;
       currentSection = section;
       closeMobileNav();
-      if(APP_CONFIG.dataProvider === 'supabase') {
-        await refreshDevicesFromSupabase();
-        if(section === 'company' || section === 'supplyRequests' || section === 'technician' || section === 'completion' || section === 'returns'){
-          await refreshArrayTablesFromSupabase();
-        }
-      }
       document.querySelectorAll('.section-page').forEach(el => el.classList.add('hidden'));
       const map = {
         dashboard:'dashboardSection',
@@ -3450,7 +3573,7 @@ const deviceStatusMap = {
       document.querySelectorAll('.nav button').forEach(btn => btn.classList.remove('active'));
       const navBtn = document.getElementById('nav_' + section);
       if(navBtn) navBtn.classList.add('active');
-      renderAll();
+      renderCurrentSection();
       refreshMobileUX();
       if(previousSection !== section){
         window.scrollTo({top:0, behavior:'smooth'});
@@ -3562,13 +3685,6 @@ const deviceStatusMap = {
       __uiDraftState = null;
       __renderPausedBecauseEditing = false;
       return true;
-    }
-
-    function scheduleSmartRender(opts = {}){
-      clearTimeout(__smartRenderTimer);
-      __smartRenderTimer = setTimeout(() => {
-        renderAll(opts);
-      }, Number(opts.delay ?? 80));
     }
 
     document.addEventListener('input', () => {
@@ -3834,7 +3950,7 @@ const deviceStatusMap = {
         if(editingReceiptId === deviceId) editingReceiptId = null;
         saveDB(true);
         buildNav();
-        renderAll();
+        renderCurrentSection();
         alert('تم حذف الجهاز بنجاح');
       }catch(err){
         console.error('deleteDeviceCascade failed:', err);
@@ -3922,10 +4038,9 @@ const deviceStatusMap = {
             }
             throw error;
           }
-          await refreshArrayTablesFromSupabase();
         }
         saveDB(true);
-        renderAll();
+        renderCurrentSection();
         openSection('shopReceive');
         showToast('تم تحديث الفاتورة المرتبطة بالجهاز بنجاح', 'info', 2400, 'نجاح');
       }catch(err){
@@ -3975,11 +4090,9 @@ const deviceStatusMap = {
         }
 
         if(APP_CONFIG.dataProvider === 'supabase'){
-          await refreshArrayTablesFromSupabase();
-          await refreshDevicesFromSupabase();
         }
         saveDB(true);
-        renderAll();
+        renderCurrentSection();
         if(currentSection === 'technician'){
           openSection('technician');
         }else{
@@ -4915,7 +5028,7 @@ function renderShopReceive(){
           editingReceiptId = null;
           showToast('تم تحديث وصل الاستلام بنجاح', 'info', 2600, 'نجاح');
           e.target.reset();
-          renderAll();
+          renderCurrentSection();
           openSection('shopReceive');
           return;
         }
@@ -4954,7 +5067,7 @@ function renderShopReceive(){
         saveDB();
         showToast(`تم حفظ استلام الجهاز بنجاح برقم وصل ${receiptInfo.autoNumber}`, 'info', 2800, 'نجاح');
         e.target.reset();
-        renderAll();
+        renderCurrentSection();
         openSection('devices');
       } catch(error){
         console.error('createDevice failed:', error);
@@ -5023,7 +5136,7 @@ function renderShopReceive(){
       db.counters.receipt = Math.max(Number(db.counters.receipt) || 1, serialGuess + 1);
       await DevicesAPI.upsert(device);
       saveDB();
-      renderAll();
+      renderCurrentSection();
       alert('تمت إضافة الجهاز القديم بنجاح');
 
       ['legacyReceiptNumber','legacyCustomerName','legacyPhone','legacyDeviceType','legacyDeviceColor','legacyRepairAmount','legacyCreatedAt','legacyFaultDescription'].forEach(id => {
@@ -5072,7 +5185,7 @@ function renderShopReceive(){
         delete db.deviceMissingParts[deviceId];
       }
       saveDB();
-      renderAll();
+      renderCurrentSection();
       alert(clean ? 'تم حفظ نواقص قطع الغيار' : 'تم مسح نواقص قطع الغيار');
     }
 
@@ -5083,7 +5196,7 @@ function renderShopReceive(){
       db.deviceMissingParts = sanitizeMissingPartsMap(db.deviceMissingParts || {});
       delete db.deviceMissingParts[deviceId];
       saveDB();
-      renderAll();
+      renderCurrentSection();
       alert('تم حذف نواقص قطع الغيار');
     }
 
@@ -6245,7 +6358,7 @@ window.addEventListener('load', function(){
         e.target.reset();
         const searchInput = document.getElementById('supplyDeviceSearch');
         if(searchInput) searchInput.value = '';
-        renderAll();
+        renderCurrentSection();
         buildNav();
         alert('تم إنشاء الفاتورة وإرسالها إلى صفحة الشركة بنجاح');
       } catch(err){
@@ -6331,16 +6444,15 @@ window.addEventListener('load', function(){
           if(createdSlips.length){
             await Promise.all(createdSlips.map(slip => upsertSinglePartSlip(slip)));
           }
-          await refreshArrayTablesFromSupabase();
         }
 
-        renderAll();
+        renderCurrentSection();
         alert(nextStatus === 'prepared' ? 'تم تجهيز الفاتورة بنجاح' : 'تم تسجيل الفاتورة كـ لم يتم التجهيز');
       }catch(err){
         Object.assign(request, previousRequest);
         db.partSlips = previousPartSlips;
         saveDB(true);
-        renderAll();
+        renderCurrentSection();
         console.error('handleCompanyRequest failed:', err);
         alert('تعذر تحديث حالة الفاتورة: ' + (err && (err.message || err.details || err.code) ? (err.message || err.details || err.code) : 'خطأ غير معروف'));
       }
@@ -6381,7 +6493,7 @@ window.addEventListener('load', function(){
         companyDecisionNote: ''
       });
       await updateDeviceStatus(deviceId, 'sent_to_company_repair');
-      renderAll();
+      renderCurrentSection();
       alert('تم إرسال الجهاز إلى الشركة وبانتظار أن تضغط الشركة: تم الاستلام من الصيانة');
     }
 
@@ -6417,7 +6529,7 @@ window.addEventListener('load', function(){
       });
 
       await updateDeviceStatus(deviceId, nextStatus);
-      renderAll();
+      renderCurrentSection();
       alert(message);
     }
 
@@ -6431,7 +6543,7 @@ window.addEventListener('load', function(){
         technicianReceivedAt: nowISO()
       });
       await updateDeviceStatus(deviceId, 'received');
-      renderAll();
+      renderCurrentSection();
       alert('تم استلام الجهاز في الصيانة');
     }
 
@@ -7620,7 +7732,7 @@ window.addEventListener('load', function(){
       }
       e.target.reset();
       onCompletionFinalAmountChange();
-      renderAll();
+      renderCurrentSection();
       buildNav();
       openSection('completion');
     }
@@ -7635,7 +7747,7 @@ window.addEventListener('load', function(){
       part.returnRequestedBy = currentUser ? currentUser.fullName : '—';
       part.updatedAt = nowISO();
       saveDB();
-      renderAll();
+      renderCurrentSection();
     }
 
 
@@ -7702,7 +7814,7 @@ window.addEventListener('load', function(){
       });
       db.deviceReturnRequests = sanitizeDeviceReturnRequests(db.deviceReturnRequests || []);
       saveDB();
-      renderAll();
+      renderCurrentSection();
       alert(reopened.invoiceNumbers.length
         ? 'تمت إعادة استلام الجهاز وعادت فواتيره القديمة للتعديل أو لطلب إرجاعها للشركة.'
         : 'تمت إعادة استلام الجهاز من الزبون مباشرة وعاد إلى حالة مستلم.');
@@ -7740,7 +7852,7 @@ window.addEventListener('load', function(){
       }
       db.deviceReturnRequests = sanitizeDeviceReturnRequests(db.deviceReturnRequests || []);
       saveDB();
-      renderAll();
+      renderCurrentSection();
       alert(status === 'approved' ? 'تمت إعادة الجهاز إلى حالة مستلم.' : 'تم رفض طلب إرجاع الجهاز.');
     }
 
@@ -7867,7 +7979,7 @@ window.addEventListener('load', function(){
       part.returnHandledAt = nowISO();
       part.updatedAt = nowISO();
       saveDB();
-      renderAll();
+      renderCurrentSection();
     }
 
     async function setDeviceDeliveredToCompany(deviceId){
@@ -7878,7 +7990,7 @@ window.addEventListener('load', function(){
         deliveredBy: currentUser ? currentUser.fullName : '—'
       });
       if(!changed) return;
-      renderAll();
+      renderCurrentSection();
       alert('تم إرسال الجهاز للشركة / دلفري بنجاح');
     }
 
@@ -7892,7 +8004,7 @@ window.addEventListener('load', function(){
       if(!changed) return;
       db.deviceReturnRequests = sanitizeDeviceReturnRequests(db.deviceReturnRequests || []);
       saveDB();
-      renderAll();
+      renderCurrentSection();
       alert('تم تسجيل التسليم للزبون بنجاح');
     }
 
@@ -7989,7 +8101,7 @@ window.addEventListener('load', function(){
         db.partSlips.push({id:uid('ps'),requestId:r2.id,salesInvoiceNumber:r2.salesInvoiceNumber,deviceId:d1.id,receiptNumber:'1001',customerName:'علي فاضل',partDescription:'بطارية',notes:'بطارية أصلية',status:'pending',preparedBy:'موظف الشركة',createdAt:nowISO(),updatedAt:nowISO(),usedInCompletionId:null,returnReason:'',returnRequestedBy:null,returnHandledBy:null,returnHandledAt:null});
       }
       saveDB();
-      renderAll();
+      renderCurrentSection();
       alert('تمت إضافة بيانات تجريبية');
     }
 
