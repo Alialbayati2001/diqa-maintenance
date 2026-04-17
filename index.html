@@ -4207,16 +4207,25 @@ const deviceStatusMap = {
         if(!slip) return false;
 
         const request = (db.supplyRequests || []).find(r => String(r.id || '') === String(slip.requestId || ''));
+        if(!request || request.status !== 'prepared') return false;
 
-        const isPreparedFromCompany = !!(request && request.status === 'prepared');
-        const isUsedByTechnician = slip.status === 'used' || !!slip.usedInCompletionId;
-        const isStillPendingForTechnician = ['pending','rejected_return'].includes(slip.status);
+        const device = (db.devices || []).find(d => String(d.id || '') === String(request.deviceId || slip.deviceId || ''));
+        const deviceStatus = String(device?.status || '').toLowerCase();
 
-        if(!isPreparedFromCompany) return false;
-        if(isUsedByTechnician) return false;
-        if(isStillPendingForTechnician) return true;
+        const isMarkedByTechnician = (slip.status === 'used' || !!slip.usedInCompletionId);
+        const isDeviceClosed = [
+          'complete',
+          'delivered',
+          'delivered_customer',
+          'delivered_company',
+          'sent-company-repair'
+        ].includes(deviceStatus);
 
-        return false;
+        if(isMarkedByTechnician && isDeviceClosed){
+          return false;
+        }
+
+        return ['pending','rejected_return'].includes(slip.status);
       });
     }
 
@@ -4226,7 +4235,7 @@ const deviceStatusMap = {
         return;
       }
 
-      const ok = confirm('سيتم تصحيح الوصولات القديمة بحيث تُعلَّم الوصولات كمستخدمة فقط إذا كانت مرتبطة بوصل إتمام فعلي. الوصولات غير المجهزة من الشركة لن تُحسب معلقة عند الفني. كما سيُعامل التسليم للزبون أو للشركة كحالة منتهية. متابعة؟');
+      const ok = confirm('سيتم تصحيح الوصولات القديمة بحيث تُعلَّم الوصولات كمستخدمة فقط إذا كانت مرتبطة بوصل إتمام فعلي. الوصولات غير المجهزة من الشركة لن تُحسب معلقة عند الفني. كما سيُعامل التسليم للزبون أو للشركة كحالة منتهية، لكن إخفاء الوصل من المعلقات يبقى فقط إذا كان محدداً من الفني والجهاز منتهياً. متابعة؟');
       if(!ok) return;
 
       const completions = Array.isArray(db.completions) ? db.completions : [];
