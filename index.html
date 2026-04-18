@@ -1418,13 +1418,17 @@
       supplyRequests: [],
       partSlips: [],
       completions: [],
+      deviceBrands: ['iphone','ipad','samsung','xiaomi','redmi','mi','poco','huawie','huawei','honor','realme','oppo','vivo','infinix','tecno','moto','motorola','allcall','alcatel','LG','hisense','hisens','blackview','doogee','dooge','nokia','TCL','zte','wiko','lenovo','redmagic','oscal'],
       deviceMissingParts: {},
       deviceReturnRequests: [],
       deviceCompanyRepairTransfers: {},
       counters: { receipt: 1 }
     };
 
+    const DEFAULT_DEVICE_BRANDS = ['iphone','ipad','samsung','xiaomi','redmi','mi','poco','huawie','huawei','honor','realme','oppo','vivo','infinix','tecno','moto','motorola','allcall','alcatel','LG','hisense','hisens','blackview','doogee','dooge','nokia','TCL','zte','wiko','lenovo','redmagic','oscal'];
+
     let db = loadDB();
+    if(!Array.isArray(db.deviceBrands) || !db.deviceBrands.length) db.deviceBrands = [...DEFAULT_DEVICE_BRANDS];
     normalizeDevicesInDB(false);
     ensureBarcodeValues();
     let currentUser = null;
@@ -1445,7 +1449,47 @@
     
     const MAINTENANCE_PHONE = "07742228831";
 
-    const DEVICE_BRANDS = ['iphone','ipad','samsung','xiaomi','redmi','mi','poco','huawie','huawei','honor','realme','oppo','vivo','infinix','tecno','moto','motorola','allcall','alcatel','LG','hisense','hisens','blackview','doogee','dooge','nokia','TCL','zte','wiko','lenovo','redmagic'];
+
+    function getDeviceBrands(){
+      const base = Array.isArray(db?.deviceBrands) && db.deviceBrands.length ? db.deviceBrands : DEFAULT_DEVICE_BRANDS;
+      const seen = new Set();
+      return base
+        .map(name => String(name || '').trim())
+        .filter(Boolean)
+        .filter(name => {
+          const key = name.toLowerCase();
+          if(seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    }
+
+    function setDeviceBrands(list){
+      db.deviceBrands = (Array.isArray(list) ? list : [])
+        .map(name => String(name || '').trim())
+        .filter(Boolean);
+      saveDB();
+    }
+
+    function upsertDeviceBrand(newName, oldName=''){
+      const cleanNew = String(newName || '').trim();
+      const cleanOld = String(oldName || '').trim();
+      if(!cleanNew) return false;
+      const brands = getDeviceBrands();
+      const filtered = brands.filter(name => name.toLowerCase() !== cleanOld.toLowerCase() && name.toLowerCase() !== cleanNew.toLowerCase());
+      filtered.push(cleanNew);
+      filtered.sort((a,b) => a.localeCompare(b, 'en', {sensitivity:'base'}));
+      setDeviceBrands(filtered);
+      return true;
+    }
+
+    function removeDeviceBrand(name){
+      const clean = String(name || '').trim();
+      if(!clean) return false;
+      const filtered = getDeviceBrands().filter(item => item.toLowerCase() !== clean.toLowerCase());
+      setDeviceBrands(filtered);
+      return true;
+    }
     const DEVICE_BRAND_ALIASES = {
       huawie: 'huawei',
       iphone: 'iphone',
@@ -1666,7 +1710,7 @@
       if(!raw) return '';
       const mapped = DEVICE_BRAND_ALIASES[raw.toLowerCase()];
       if(mapped) return mapped;
-      return DEVICE_BRANDS.find(b => b.toLowerCase() === raw.toLowerCase()) || raw;
+      return getDeviceBrands().find(b => b.toLowerCase() === raw.toLowerCase()) || raw;
     }
 
     function normalizeBrandInput(value=''){
@@ -1675,7 +1719,7 @@
       const parts = raw.split(/\s+/).filter(Boolean);
       const first = parts[0] || '';
       const matchedBrand = normalizeBrandName(first);
-      if(matchedBrand && DEVICE_BRANDS.some(b => b.toLowerCase() === matchedBrand.toLowerCase())){
+      if(matchedBrand && getDeviceBrands().some(b => b.toLowerCase() === matchedBrand.toLowerCase())){
         const rest = parts.slice(1).map((part, index) => index === 0 ? normalizeDeviceSeriesToken(part) : part);
         return [matchedBrand, ...rest].join(' ').trim();
       }
@@ -1769,10 +1813,10 @@
       const normalized = normalizeBrandInput(currentValue || '');
       const parts = String(normalized || '').trim().split(/\s+/).filter(Boolean);
       const first = parts[0] || '';
-      const brandOptions = DEVICE_BRANDS.map(b => `<option value="${escapeHtml(b)} " ></option>`);
+      const brandOptions = getDeviceBrands().map(b => `<option value="${escapeHtml(b)} " ></option>`);
       if(!first) return brandOptions.join('');
       const matchedBrand = normalizeBrandName(first);
-      if(matchedBrand && DEVICE_BRANDS.some(b => b.toLowerCase() === matchedBrand.toLowerCase())){
+      if(matchedBrand && getDeviceBrands().some(b => b.toLowerCase() === matchedBrand.toLowerCase())){
         const typedModel = parts.slice(1).join(' ').trim();
         const catalogOptions = getCatalogModelsByBrand(matchedBrand, typedModel).map(name => `<option value="${escapeHtml(name)}"></option>`);
         const modelOptions = getKnownDeviceModelsByBrand(matchedBrand).map(name => `<option value="${escapeHtml(name)}"></option>`);
@@ -1823,7 +1867,7 @@ const APP_CONFIG = {
     };
 
     const supabaseClient = window.supabase.createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseAnonKey);
-    let isHydrated = false;
+    var isHydrated = false;
     let hydrationPromise = null;
     let saveTimer = null;
     let savingPromise = null;
@@ -4837,7 +4881,7 @@ const deviceStatusMap = {
       const parts = String(normalized || '').trim().split(/\s+/).filter(Boolean);
       if(!parts.length) return { brand:'', model:'' };
       const brand = normalizeBrandName(parts[0] || '');
-      const brandIsKnown = DEVICE_BRANDS.some(b => String(b).toLowerCase() === String(brand || '').toLowerCase());
+      const brandIsKnown = getDeviceBrands().some(b => String(b).toLowerCase() === String(brand || '').toLowerCase());
       if(!brandIsKnown){
         return { brand:'', model:String(normalized || '').trim() };
       }
@@ -4849,7 +4893,7 @@ const deviceStatusMap = {
 
     function getDeviceBrandOnlySuggestions(currentValue=''){
       const query = String(currentValue || '').trim().toLowerCase();
-      const knownBrands = [...DEVICE_BRANDS, ...Object.values(DEVICE_BRAND_ALIASES || {})]
+      const knownBrands = [...getDeviceBrands(), ...Object.values(DEVICE_BRAND_ALIASES || {})]
         .filter(Boolean)
         .map(name => normalizeBrandName(name))
         .filter(Boolean);
@@ -4910,15 +4954,9 @@ const deviceStatusMap = {
     }
 
     function refreshCompositeDeviceTypeLists(){
-      const brandList = document.getElementById('deviceBrandOnlyList');
       const modelList = document.getElementById('deviceModelOnlyList');
       const brandInput = document.getElementById('deviceBrand');
       const modelInput = document.getElementById('deviceModel');
-      if(brandList){
-        brandList.innerHTML = getDeviceBrandOnlySuggestions(brandInput?.value || '')
-          .map(name => `<option value="${escapeHtml(name)}"></option>`)
-          .join('');
-      }
       if(modelList){
         const brand = normalizeBrandName(brandInput?.value || '');
         modelList.innerHTML = getDeviceModelOnlySuggestions(brand, modelInput?.value || '')
@@ -4983,6 +5021,96 @@ const deviceStatusMap = {
       });
       refreshCompositeDeviceTypeLists();
     }
+
+
+    function renderDeviceBrandsManagerHtml(){
+      const brands = getDeviceBrands();
+      if(!brands.length) return '<div class="muted">لا توجد أسماء شركات حالياً</div>';
+      return `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>اسم الشركة</th>
+                <th>تعديل</th>
+                <th>حذف</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${brands.map(name => `
+                <tr>
+                  <td>${escapeHtml(name)}</td>
+                  <td><button type="button" class="small" onclick='renameDeviceBrand(${JSON.stringify(name)})'>تعديل</button></td>
+                  <td><button type="button" class="small danger" onclick='deleteDeviceBrand(${JSON.stringify(name)})'>حذف</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function rerenderDeviceBrandControls(){
+      const box = document.getElementById('deviceBrandsManagerBox');
+      if(box) box.innerHTML = renderDeviceBrandsManagerHtml();
+      const brandSelect = document.getElementById('deviceBrand');
+      if(brandSelect){
+        const current = brandSelect.value;
+        brandSelect.innerHTML = `<option value="">اختر اسم الشركة</option>` + getDeviceBrandOnlySuggestions(current)
+          .map(name => `<option value="${escapeHtml(name)}" ${String(current || '').toLowerCase()===String(name).toLowerCase() ? 'selected' : ''}>${escapeHtml(name)}</option>`)
+          .join('');
+      }
+      refreshDeviceBrandList();
+    }
+
+    function addNewDeviceBrand(){
+      const input = document.getElementById('newBrandName');
+      const value = String(input?.value || '').trim();
+      if(!value){
+        alert('اكتب اسم الشركة أولاً');
+        return;
+      }
+      upsertDeviceBrand(value);
+      if(input) input.value = '';
+      rerenderDeviceBrandControls();
+      alert('تمت إضافة اسم الشركة');
+    }
+
+    function renameDeviceBrand(oldName){
+      const newName = prompt('اكتب الاسم الجديد للشركة', oldName || '');
+      if(newName === null) return;
+      const clean = String(newName || '').trim();
+      if(!clean){
+        alert('اسم الشركة لا يمكن أن يكون فارغاً');
+        return;
+      }
+      const currentBrand = document.getElementById('deviceBrand');
+      const selected = String(currentBrand?.value || '').toLowerCase() === String(oldName || '').toLowerCase();
+      upsertDeviceBrand(clean, oldName);
+      if(selected && currentBrand) currentBrand.value = clean;
+      rerenderDeviceBrandControls();
+      syncDeviceTypeCompositeField();
+      alert('تم تعديل اسم الشركة');
+    }
+
+    function deleteDeviceBrand(name){
+      const clean = String(name || '').trim();
+      if(!clean) return;
+      const inUse = (db.devices || []).some(item => splitDeviceTypeParts(item?.deviceType || '').brand.toLowerCase() === clean.toLowerCase());
+      const msg = inUse
+        ? 'هذه الشركة موجودة في بعض الأجهزة القديمة. سيتم حذفها من الخيارات الجديدة فقط، هل تريد المتابعة؟'
+        : `هل تريد حذف شركة ${clean} من الخيارات؟`;
+      if(!confirm(msg)) return;
+      removeDeviceBrand(clean);
+      const currentBrand = document.getElementById('deviceBrand');
+      if(currentBrand && String(currentBrand.value || '').toLowerCase() === clean.toLowerCase()){
+        currentBrand.value = '';
+        syncDeviceTypeCompositeField();
+      }
+      rerenderDeviceBrandControls();
+      alert('تم حذف اسم الشركة من الخيارات');
+    }
+
 
 function renderShopReceive(){
       const sectionEl = document.getElementById('shopReceiveSection');
@@ -5091,9 +5219,11 @@ function renderShopReceive(){
           <div><label>رقم الهاتف</label><input id="phone" value="${escapeHtml(editTarget?.phone || '')}" required /></div>
           <div>
             <label>اسم الشركة</label>
-            <input id="deviceBrand" value="${escapeHtml(editDeviceTypeParts.brand || '')}" list="deviceBrandOnlyList" placeholder="مثال: HONOR" oninput="handleDeviceBrandFieldInput(this)" required />
-            <datalist id="deviceBrandOnlyList"></datalist>
-            <div class="hint">ابدأ باسم الشركة أولاً، وستظهر لك اقتراحات مثل HONOR و Samsung و iPhone و Xiaomi</div>
+            <select id="deviceBrand" onchange="handleDeviceBrandFieldInput(this)" required>
+              <option value="">اختر اسم الشركة</option>
+              ${getDeviceBrandOnlySuggestions(editDeviceTypeParts.brand || '').map(name => `<option value="${escapeHtml(name)}" ${String(editDeviceTypeParts.brand || '').toLowerCase()===String(name).toLowerCase() ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}
+            </select>
+            <div class="hint">اسم الشركة للاختيار فقط، ويمكنك إدارة القائمة من لوحة الأسماء أدناه</div>
           </div>
           <div>
             <label>موديل الجهاز</label>
@@ -5116,6 +5246,25 @@ function renderShopReceive(){
             ${isEditing ? '<button type="button" class="secondary" onclick="cancelEditReceipt()">إلغاء التعديل</button>' : ''}
           </div>
         </form>
+        <div style="height:12px"></div>
+        <div class="card" style="padding:14px;margin-bottom:12px">
+          <div class="section-title" style="margin-bottom:10px">
+            <div>
+              <h2 style="font-size:18px">إدارة أسماء الشركات</h2>
+              <p>إضافة أو تعديل أو حذف اسم شركة ليظهر مباشرة داخل دروب داون اسم الشركة</p>
+            </div>
+          </div>
+          <div class="grid grid-2" style="margin-bottom:10px">
+            <div>
+              <label>اسم جديد للشركة</label>
+              <input id="newBrandName" placeholder="مثال: HONOR أو OSCAL" />
+            </div>
+            <div class="actions" style="align-items:end">
+              <button type="button" onclick="addNewDeviceBrand()">إضافة اسم شركة</button>
+            </div>
+          </div>
+          <div id="deviceBrandsManagerBox">${renderDeviceBrandsManagerHtml()}</div>
+        </div>
         ${linkedRequestsEditorHtml}
         <div style="height:16px"></div>
         <div class="section-title" style="margin-bottom:10px">
@@ -5237,7 +5386,7 @@ function renderShopReceive(){
         alert(`يرجى ملء حقل: ${missingField[0]}`);
         return;
       }
-      if(!DEVICE_BRANDS.some(b => String(b).toLowerCase() === String(deviceBrand || '').toLowerCase())){
+      if(!getDeviceBrands().some(b => String(b).toLowerCase() === String(deviceBrand || '').toLowerCase())){
         alert('يرجى اختيار أو كتابة اسم شركة معروف أولاً مثل HONOR أو Samsung');
         return;
       }
