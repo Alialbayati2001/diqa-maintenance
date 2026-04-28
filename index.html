@@ -4470,15 +4470,17 @@ const deviceStatusMap = {
 
     function buildReadyDeviceWarningMessage(device){
       const customerName = device?.customerName || 'زبوننا الكريم';
-      const deviceType = device?.deviceType || 'جهازكم';
+      const deviceType = device?.deviceType || 'الجهاز';
       const completedDate = formatDateTime(device?.completedAt || device?.updatedAt || device?.createdAt);
 
       return `عزيزي ${customerName}،
-نود إعلامكم بأن جهازكم (${deviceType}) قد تم إكمال صيانته وهو جاهز للاستلام منذ (${completedDate}).
+نود إعلامكم بأن جهازكم (${deviceType}) قد تم إكمال صيانته وهو جاهز للاستلام منذ (${completedDate})، وقد مضى على جاهزيته أكثر من 25 يومًا دون استلامه.
 
 نرجو التفضل بمراجعتنا واستلام الجهاز بأقرب وقت ممكن.
 
-ونحيطكم علماً أنه بعد مرور هذه المدة، لا نتحمل أي مسؤولية عن الجهاز أو أي أضرار أو فقدان قد يحدث له، شاكرين تعاونكم 🌹.`;
+ونحيطكم علمًا بأنه بعد مرور 30 يوم من اكتمال الجهاز، لا نتحمل أي مسؤولية عن الجهاز أو أي أضرار أو فقدان قد يحدث له لاحقًا.
+
+شاكرين تعاونكم وتفهمكم 🌹`;
     }
 
     function openReadyDeviceWhatsApp(deviceId){
@@ -4489,8 +4491,8 @@ const deviceStatusMap = {
       }
 
       const ageDays = getDaysSince(device.completedAt || device.updatedAt || device.createdAt);
-      if(ageDays < 29){
-        alert('هذا الجهاز لم يتأخر 29 يوم أو أكثر بعد');
+      if(ageDays < 25){
+        alert('زر التنبيه يظهر فقط بعد مرور 25 يوم أو أكثر من تاريخ إكمال الجهاز');
         return;
       }
 
@@ -4537,7 +4539,7 @@ const deviceStatusMap = {
       const isReadyNotDeliveredTable = title === 'الأجهزة الجاهزة غير المسلمة';
       const showReadyWhatsappColumn =
         isReadyNotDeliveredTable &&
-        items.some(d => getDaysSince(d.completedAt || d.updatedAt || d.createdAt) >= 29);
+        items.some(d => getDaysSince(d.completedAt || d.updatedAt || d.createdAt) >= 25);
 
       const rows = items.map(d => {
         const usedSlipNumbers = showUsedSlipNumbersColumn ? getDeviceSupplyInvoiceNumbers(d.id) : [];
@@ -4549,7 +4551,7 @@ const deviceStatusMap = {
           ? '<span class="badge b-complete">تصلح</span>'
           : '<span class="badge b-not-prepared">لم يصلح</span>';
         const readyDelayDays = getDaysSince(d.completedAt || d.updatedAt || d.createdAt);
-        const readyWhatsappButton = showReadyWhatsappColumn && readyDelayDays >= 29
+        const readyWhatsappButton = showReadyWhatsappColumn && readyDelayDays >= 25
           ? `<button type="button" class="small warning" onclick="openReadyDeviceWhatsApp('${d.id}')">إرسال واتساب</button>`
           : '';
 
