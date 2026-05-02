@@ -4401,10 +4401,19 @@ const deviceStatusMap = {
         .sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
     }
 
+    function getReadyDeviceDate(device){
+      if(!device) return null;
+      if(device.status === 'not_repaired'){
+        return device.notRepairedAt || device.completedAt || device.updatedAt || device.createdAt || null;
+      }
+      return device.completedAt || device.notRepairedAt || device.updatedAt || device.createdAt || null;
+    }
+
     function getReadyNotDeliveredDevices(){
       return (db.devices || [])
-        .filter(d => d.status === 'complete')
-        .sort((a,b) => new Date(b.completedAt || b.updatedAt || b.createdAt || 0) - new Date(a.completedAt || a.updatedAt || a.createdAt || 0));
+        .filter(d => ['complete', 'not_repaired'].includes(d.status))
+        .filter(d => !['delivered', 'delivered_customer', 'delivered_company'].includes(d.status))
+        .sort((a,b) => new Date(getReadyDeviceDate(b) || 0) - new Date(getReadyDeviceDate(a) || 0));
     }
 
     function getDashboardQuickListHtml(type){
@@ -4481,14 +4490,20 @@ const deviceStatusMap = {
     function buildReadyDeviceWarningMessage(device){
       const customerName = device?.customerName || 'زبوننا الكريم';
       const deviceType = device?.deviceType || 'الجهاز';
-      const completedDate = formatDateTime(device?.completedAt || device?.updatedAt || device?.createdAt);
+      const readyDate = formatDateTime(getReadyDeviceDate(device));
+      const isNotRepaired = device?.status === 'not_repaired';
+      const repairLine = isNotRepaired
+        ? `نود إعلامكم بأن جهازكم (${deviceType}) لم يتم تصليحه وهو جاهز للاستلام منذ (${readyDate})، وقد مضى على جاهزيته أكثر من 25 يومًا دون استلامه.`
+        : `نود إعلامكم بأن جهازكم (${deviceType}) قد تم إكمال صيانته وهو جاهز للاستلام منذ (${readyDate})، وقد مضى على جاهزيته أكثر من 25 يومًا دون استلامه.`;
+      const reasonLine = isNotRepaired && device?.notRepairReason
+        ? `\nسبب عدم التصليح: ${device.notRepairReason}\n`
+        : '';
 
       return `عزيزي ${customerName}،
-نود إعلامكم بأن جهازكم (${deviceType}) قد تم إكمال صيانته وهو جاهز للاستلام منذ (${completedDate})، وقد مضى على جاهزيته أكثر من 25 يومًا دون استلامه.
-
+${repairLine}${reasonLine}
 نرجو التفضل بمراجعتنا واستلام الجهاز بأقرب وقت ممكن.
 
-ونحيطكم علمًا بأنه بعد مرور 30 يوم من اكتمال الجهاز، لا نتحمل أي مسؤولية عن الجهاز أو أي أضرار أو فقدان قد يحدث له لاحقًا.
+ونحيطكم علمًا بأنه بعد مرور 30 يوم من جاهزية الجهاز، لا نتحمل أي مسؤولية عن الجهاز أو أي أضرار أو فقدان قد يحدث له لاحقًا.
 
 شاكرين تعاونكم وتفهمكم 🌹`;
     }
@@ -4500,9 +4515,9 @@ const deviceStatusMap = {
         return;
       }
 
-      const ageDays = getDaysSince(device.completedAt || device.updatedAt || device.createdAt);
+      const ageDays = getDaysSince(getReadyDeviceDate(device));
       if(ageDays < 25){
-        alert('زر التنبيه يظهر فقط بعد مرور 25 يوم أو أكثر من تاريخ إكمال الجهاز');
+        alert('زر التنبيه يظهر فقط بعد مرور 25 يوم أو أكثر من تاريخ جاهزية الجهاز');
         return;
       }
 
@@ -4540,16 +4555,18 @@ const deviceStatusMap = {
         currentUser.role === 'manager' &&
         title === 'الأجهزة المسلمة في التاريخ المحدد';
 
+      const isReadyNotDeliveredTable = title === 'الأجهزة الجاهزة غير المسلمة';
+
       const showRepairResultColumn =
         title === 'الأجهزة المسلمة اليوم' ||
         title === 'الأجهزة المسلمة في التاريخ المحدد' ||
         title === 'الأجهزة المكتملة اليوم' ||
-        title === 'الأجهزة المكتملة في التاريخ المحدد';
+        title === 'الأجهزة المكتملة في التاريخ المحدد' ||
+        isReadyNotDeliveredTable;
 
-      const isReadyNotDeliveredTable = title === 'الأجهزة الجاهزة غير المسلمة';
       const showReadyWhatsappColumn =
         isReadyNotDeliveredTable &&
-        items.some(d => getDaysSince(d.completedAt || d.updatedAt || d.createdAt) >= 25);
+        items.some(d => getDaysSince(getReadyDeviceDate(d)) >= 25);
 
       const rows = items.map(d => {
         const usedSlipNumbers = showUsedSlipNumbersColumn ? getDeviceSupplyInvoiceNumbers(d.id) : [];
@@ -4557,10 +4574,10 @@ const deviceStatusMap = {
         const repairAmount = Number(d.repairAmount || 0);
         const partsCost = getDevicePartsCost(d.id);
         const deviceProfit = repairAmount - partsCost;
-        const repairResultBadge = repairAmount > 0
-          ? '<span class="badge b-complete">تصلح</span>'
-          : '<span class="badge b-not-prepared">لم يصلح</span>';
-        const readyDelayDays = getDaysSince(d.completedAt || d.updatedAt || d.createdAt);
+        const repairResultBadge = d.status === 'not_repaired'
+          ? '<span class="badge b-not-prepared">لم يصلح</span>'
+          : '<span class="badge b-complete">تصلح</span>';
+        const readyDelayDays = getDaysSince(getReadyDeviceDate(d));
         const readyWhatsappButton = showReadyWhatsappColumn && readyDelayDays >= 25
           ? `<button type="button" class="small warning" onclick="openReadyDeviceWhatsApp('${d.id}')">إرسال واتساب</button>`
           : '';
@@ -4573,7 +4590,7 @@ const deviceStatusMap = {
             <td>${escapeHtml(d.deviceType || '—')}</td>
             <td>${escapeHtml(d.phone || '—')}</td>
             ${showRepairResultColumn ? `<td>${repairResultBadge}</td>` : `<td>${badge(deviceStatusMap, d.status)}</td>`}
-            <td>${formatDateTime(d.deliveredAt || d.createdAt || d.completedAt || d.updatedAt)}</td>
+            <td>${formatDateTime(d.deliveredAt || getReadyDeviceDate(d) || d.createdAt || d.updatedAt)}</td>
             ${showProfitColumn ? `<td>${formatCurrency(deviceProfit)}</td>` : ''}
             ${showReadyWhatsappColumn ? `<td>${readyWhatsappButton}</td>` : ''}
             <td><button type="button" class="small info" onclick="openDeviceFromDashboard('${d.id}')">فتح</button></td>
