@@ -1184,6 +1184,16 @@
   }
 }
 
+
+
+/* ===== إصلاح كتابة حقل البحث العربي في تسليم الجهاز ===== */
+.rtl-search-fix{
+  direction:rtl !important;
+  unicode-bidi:plaintext !important;
+  text-align:right !important;
+  caret-color:#2cb9c2;
+}
+
 </style>
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script>
@@ -7713,7 +7723,7 @@ window.addEventListener('load', function(){
 
     function commitDeliverySearch(value, event){
       if(event) rememberSearchSelectionState('deliverySearchInput', deliverySearchSelection, event);
-      deliveryPagination.search = String(value || '').trim();
+      deliveryPagination.search = String(value || '');
       deliveryPagination.page = 1;
       renderDelivery();
     }
@@ -7727,6 +7737,20 @@ window.addEventListener('load', function(){
 
     function renderDeliverySearchInputState(){
       restoreSearchSelectionState('deliverySearchInput', deliverySearchSelection);
+      // إصلاح خاص لحقل بحث تسليم الجهاز: بعد إعادة رسم الجدول يبقى المؤشر في نهاية النص
+      // حتى لا يضاف الحرف الجديد في بداية كلمة البحث داخل حقول RTL.
+      requestAnimationFrame(() => {
+        const input = document.getElementById('deliverySearchInput');
+        if(!input) return;
+        input.setAttribute('dir', 'rtl');
+        input.style.direction = 'rtl';
+        input.style.unicodeBidi = 'plaintext';
+        input.style.textAlign = 'right';
+        if(document.activeElement === input && typeof input.setSelectionRange === 'function'){
+          const pos = String(input.value || '').length;
+          try{ input.setSelectionRange(pos, pos); }catch(e){}
+        }
+      });
     }
 
     function setDeliveryPage(page){
@@ -8592,7 +8616,7 @@ window.addEventListener('load', function(){
           </div>
         </div>
         <div class="toolbar" style="margin-bottom:10px">
-          <input id="deliverySearchInput" class="search" type="text" placeholder="بحث برقم الوصل أو الزبون أو الجهاز أو حالة التسليم" value="${escapeHtml(deliveryPagination.search || '')}" oninput="handleDeliverySearchInput(event)" onfocus="rememberSearchSelectionState('deliverySearchInput', deliverySearchSelection, event)" onclick="rememberSearchSelectionState('deliverySearchInput', deliverySearchSelection, event)" />
+          <input id="deliverySearchInput" class="search rtl-search-fix" type="text" dir="rtl" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="بحث برقم الوصل أو الزبون أو الجهاز أو حالة التسليم" value="${escapeHtml(deliveryPagination.search || '')}" oninput="handleDeliverySearchInput(event)" onfocus="rememberSearchSelectionState('deliverySearchInput', deliverySearchSelection, event)" onclick="rememberSearchSelectionState('deliverySearchInput', deliverySearchSelection, event)" />
         </div>
         <div class="hint" style="margin-bottom:10px">عدد الأجهزة الظاهرة: ${deliveryMeta.totalItems}</div>
         <div class="table-wrap">
